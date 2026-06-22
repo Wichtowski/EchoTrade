@@ -1,0 +1,13 @@
+{
+	email {$CADDY_ACME_EMAIL}
+}
+
+{$ECHO_API_HOST} {
+	encode zstd gzip
+	reverse_proxy echo-core:8000
+}
+
+{$ECHO_N8N_HOST} {
+	encode zstd gzip
+	reverse_proxy echo-n8n:5678
+}

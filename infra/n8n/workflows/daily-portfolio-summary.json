@@ -1,0 +1,117 @@
+{
+  "name": "EchoTrade — Daily Portfolio Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 18,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-daily",
+      "name": "Daily 18:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://echo-core:8000/positions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Echo-Internal-Token",
+              "value": "={{ $env.ECHO_INTERNAL_API_TOKEN }}"
+            },
+            {
+              "name": "X-Echo-User-Id",
+              "value": "={{ $env.ECHO_AUTOMATION_USER_ID }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-positions",
+      "name": "Fetch Positions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://echo-core:8000/portfolio/snapshot",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Echo-Internal-Token",
+              "value": "={{ $env.ECHO_INTERNAL_API_TOKEN }}"
+            },
+            {
+              "name": "X-Echo-User-Id",
+              "value": "={{ $env.ECHO_AUTOMATION_USER_ID }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-snapshot",
+      "name": "Store Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.ECHO_DISCORD_WEBHOOK_DAILY }}",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=[EchoTrade Daily]\n\nPortfolio snapshot stored. See dashboard for details."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-daily",
+      "name": "Discord Daily",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0]
+    }
+  ],
+  "connections": {
+    "Daily 18:00": {
+      "main": [
+        [{ "node": "Fetch Positions", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Positions": {
+      "main": [
+        [{ "node": "Store Snapshot", "type": "main", "index": 0 }]
+      ]
+    },
+    "Store Snapshot": {
+      "main": [
+        [{ "node": "Discord Daily", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw"
+  },
+  "tags": [
+    { "name": "phase-2" },
+    { "name": "daily" }
+  ]
+}

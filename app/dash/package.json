@@ -1,0 +1,33 @@
+{
+  "name": "dash",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EchoTrade dashboard — Vike + React + Tailwind for Cloudflare Pages",
+  "type": "module",
+  "scripts": {
+    "dev": "vike dev --host 0.0.0.0",
+    "build": "vike build",
+    "preview": "vike build && vike preview",
+    "deploy": "vike build && wrangler pages deploy dist/client",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.101.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-icons": "^5.6.0",
+    "recharts": "^3.8.1",
+    "vike": "^0.4",
+    "vike-react": "^0.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wrangler": "^4"
+  }
+}

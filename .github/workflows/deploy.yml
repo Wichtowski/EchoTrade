@@ -1,0 +1,81 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "app/dash/**"
+      - ".github/workflows/deploy-dash.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: /srv/echotrade
+      DEPLOY_ARCHIVE: echotrade-deploy.tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package repository
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=.venv \
+            --exclude=node_modules \
+            --exclude=dist \
+            --exclude=app/dash/node_modules \
+            --exclude=app/dash/dist \
+            --exclude=infra/mailserver/docker-data/dms/mail-data \
+            --exclude=infra/mailserver/docker-data/dms/mail-state \
+            --exclude=infra/mailserver/docker-data/dms/mail-logs \
+            --exclude=infra/mailserver/docker-data/dms/config/postfix-accounts.cf \
+            --exclude=infra/mailserver/docker-data/dms/config/postfix-virtual.cf \
+            -czf "${DEPLOY_ARCHIVE}" .
+
+      - name: Copy release archive to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          source: ${{ env.DEPLOY_ARCHIVE }}
+          target: /tmp
+
+      - name: Write production environment file
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          script_stop: true
+          envs: DEPLOY_PATH
+          script: |
+            mkdir -p "${DEPLOY_PATH}"
+            cat > "${DEPLOY_PATH}/.env" <<'EOF'
+            ${{ secrets.ENV_PRODUCTION }}
+            EOF
+
+      - name: Deploy stack on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          script_stop: true
+          envs: DEPLOY_PATH,DEPLOY_ARCHIVE
+          script: |
+            set -eu
+            mkdir -p "${DEPLOY_PATH}"
+            cd "${DEPLOY_PATH}"
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+            tar -xzf "/tmp/${DEPLOY_ARCHIVE}" -C "${DEPLOY_PATH}"
+            rm -f "/tmp/${DEPLOY_ARCHIVE}"
+            docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+            docker compose --env-file .env -f docker-compose.prod.yml ps

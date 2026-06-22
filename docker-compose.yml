@@ -1,0 +1,192 @@
+# EchoTrade Docker Compose — development environment
+
+services:
+  echo-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: echo
+      POSTGRES_PASSWORD: echo
+      POSTGRES_DB: echotrade
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  echo-rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: echo
+      RABBITMQ_DEFAULT_PASS: echo
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  echo-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  echo-mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  echo-core:
+    build:
+      context: .
+      dockerfile: app/core/Dockerfile
+    working_dir: /workspace
+    command: uv run uvicorn core.app:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      ECHO_DATABASE_URL: postgresql+asyncpg://echo:echo@echo-postgres:5432/echotrade
+      ECHO_CELERY_BROKER_URL: amqp://echo:echo@echo-rabbitmq:5672//
+      ECHO_CELERY_RESULT_BACKEND: db+postgresql://echo:echo@echo-postgres:5432/echotrade
+      ECHO_REDIS_URL: redis://echo-redis:6379/0
+      ECHO_MONGODB_URL: mongodb://echo-mongo:27017
+      ECHO_MONGODB_DATABASE: echotrade
+      ECHO_MONGODB_CHART_COLLECTION: browser_chart_payloads
+      ECHO_PUBLIC_APP_URL: ${ECHO_PUBLIC_APP_URL:-http://localhost:3000}
+      ECHO_INTERNAL_API_TOKEN: ${ECHO_INTERNAL_API_TOKEN:-}
+      ECHO_AUTH_COOKIE_SECURE: ${ECHO_AUTH_COOKIE_SECURE:-false}
+      ECHO_SMTP_HOST: ${ECHO_SMTP_HOST:-}
+      ECHO_SMTP_PORT: ${ECHO_SMTP_PORT:-587}
+      ECHO_SMTP_USERNAME: ${ECHO_SMTP_USERNAME:-}
+      ECHO_SMTP_PASSWORD: ${ECHO_SMTP_PASSWORD:-}
+      ECHO_SMTP_FROM_EMAIL: ${ECHO_SMTP_FROM_EMAIL:-}
+      ECHO_SMTP_FROM_NAME: ${ECHO_SMTP_FROM_NAME:-EchoTrade}
+      ECHO_SMTP_STARTTLS: ${ECHO_SMTP_STARTTLS:-true}
+      ECHO_SMTP_SSL: ${ECHO_SMTP_SSL:-false}
+    volumes:
+      - .:/workspace
+    depends_on:
+      - echo-postgres
+      - echo-rabbitmq
+      - echo-redis
+      - echo-mongo
+
+  echo-worker:
+    build:
+      context: .
+      dockerfile: app/libworker/Dockerfile
+    working_dir: /workspace
+    command: uv run watchfiles --filter python "uv run celery -A libworker.celery_app worker --loglevel=info --without-gossip --without-mingle" app
+    environment:
+      ECHO_DATABASE_URL: postgresql+asyncpg://echo:echo@echo-postgres:5432/echotrade
+      ECHO_CELERY_BROKER_URL: amqp://echo:echo@echo-rabbitmq:5672//
+      ECHO_CELERY_RESULT_BACKEND: db+postgresql://echo:echo@echo-postgres:5432/echotrade
+      ECHO_REDIS_URL: redis://echo-redis:6379/0
+      ECHO_MONGODB_URL: mongodb://echo-mongo:27017
+      ECHO_MONGODB_DATABASE: echotrade
+      ECHO_MONGODB_CHART_COLLECTION: browser_chart_payloads
+    volumes:
+      - .:/workspace
+    depends_on:
+      - echo-postgres
+      - echo-rabbitmq
+      - echo-redis
+      - echo-mongo
+
+  # ---------------------------------------------------------------------------
+  # n8n workflow orchestrator
+  # ---------------------------------------------------------------------------
+  echo-n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=echo
+      - N8N_BASIC_AUTH_PASSWORD=echo
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=echo-postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=echo
+      - DB_POSTGRESDB_PASSWORD=echo
+      - GENERIC_TIMEZONE=Europe/Warsaw
+      - ECHO_INTERNAL_API_TOKEN=${ECHO_INTERNAL_API_TOKEN:-}
+      - ECHO_AUTOMATION_USER_ID=${ECHO_AUTOMATION_USER_ID:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - echo-postgres
+
+  echo-mail:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    hostname: ${ECHO_MAIL_HOSTNAME:-mail}
+    domainname: ${ECHO_MAIL_DOMAIN:-oskarwichtowski.com}
+    env_file:
+      - ./infra/mailserver/docker-mailserver.env
+    ports:
+      - "25:25"
+      - "587:587"
+      - "143:143"
+      - "993:993"
+    volumes:
+      - ./infra/mailserver/docker-data/dms/mail-data/:/var/mail/
+      - ./infra/mailserver/docker-data/dms/mail-state/:/var/mail-state/
+      - ./infra/mailserver/docker-data/dms/mail-logs/:/var/log/mail/
+      - ./infra/mailserver/docker-data/dms/config/:/tmp/docker-mailserver/
+      - /etc/localtime:/etc/localtime:ro
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+
+  # echo-dash:
+  #   build:
+  #     context: app/dash
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - echo-core
+
+  # ---------------------------------------------------------------------------
+  # Trading containers (enable after Phase 4+)
+  # ---------------------------------------------------------------------------
+  # echo-signal:
+  #   build:
+  #     context: .
+  #     dockerfile: app/signal/Dockerfile
+  #   depends_on:
+  #     - echo-core
+
+  # echo-guard:
+  #   build:
+  #     context: .
+  #     dockerfile: app/guard/Dockerfile
+  #   depends_on:
+  #     - echo-core
+
+  # echo-bot:
+  #   build:
+  #     context: .
+  #     dockerfile: app/bot/Dockerfile
+  #   depends_on:
+  #     - echo-guard
+
+  # echo-lens:
+  #   build:
+  #     context: .
+  #     dockerfile: app/echolens/Dockerfile
+  #   depends_on:
+  #     - echo-core
+
+volumes:
+  pgdata:
+  n8n_data:
+  rabbitmq_data:
+  redis_data:
+  mongo_data:

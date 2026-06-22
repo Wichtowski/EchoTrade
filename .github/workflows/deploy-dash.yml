@@ -1,0 +1,43 @@
+name: Deploy Dash
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/dash/**"
+      - ".github/workflows/deploy-dash.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dash
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/dash
+    env:
+      VITE_API_BASE_URL: https://apiechotrade.oskarwichtowski.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dashboard dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build static dashboard
+        run: bun run build
+
+      - name: Deploy to Cloudflare Pages
+        run: bun x wrangler pages deploy dist/client --project-name "${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}" --branch "${{ github.ref_name }}"
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

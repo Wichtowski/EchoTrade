@@ -1,0 +1,112 @@
+{
+  "name": "EchoTrade — Urgent Movement Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "cron-poll",
+      "name": "Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://echo-core:8000/portfolio/risk",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Echo-Internal-Token",
+              "value": "={{ $env.ECHO_INTERNAL_API_TOKEN }}"
+            },
+            {
+              "name": "X-Echo-User-Id",
+              "value": "={{ $env.ECHO_AUTOMATION_USER_ID }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-risk",
+      "name": "Fetch Risk",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [],
+          "number": [
+            {
+              "value1": "={{ ($json.warnings || []).length }}",
+              "operation": "largerEqual",
+              "value2": 1
+            }
+          ]
+        }
+      },
+      "id": "check-threshold",
+      "name": "Warnings Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.ECHO_DISCORD_WEBHOOK_ALERTS }}",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=[EchoTrade Alert]\n\nPortfolio risk warnings detected:\n{{ ($json.warnings || []).join('\\n') }}\n\nCheck dashboard."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-alert",
+      "name": "Discord Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -100]
+    }
+  ],
+  "connections": {
+    "Every 15 min": {
+      "main": [
+        [{ "node": "Fetch Risk", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Risk": {
+      "main": [
+        [{ "node": "Warnings Present?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Warnings Present?": {
+      "main": [
+        [{ "node": "Discord Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw"
+  },
+  "tags": [
+    { "name": "phase-2" },
+    { "name": "alerts" }
+  ]
+}

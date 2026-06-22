@@ -1,0 +1,77 @@
+[project]
+name = "echo-trade"
+version = "0.1.0"
+description = "EchoTrade — AI-powered portfolio assistant and experimental trading lab"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/echo_trade"]
+
+# ---------------------------------------------------------------------------
+# uv workspace — one `uv sync` installs everything, each member keeps its own
+# pyproject.toml and can be deployed independently in its own container.
+# ---------------------------------------------------------------------------
+[tool.uv.workspace]
+members = [
+    "app/libshared",
+    "app/libdb",
+    "app/libworker",
+    "app/core",
+    "app/pulse",
+    "app/signal",
+    "app/guard",
+    "app/bot",
+    "app/ledger",
+    "app/review",
+    "app/lens",
+    "app/wire",
+]
+
+[tool.uv.sources]
+libshared  = { workspace = true }
+libdb      = { workspace = true }
+libworker  = { workspace = true }
+core       = { workspace = true }
+pulse      = { workspace = true }
+signal     = { workspace = true }
+guard      = { workspace = true }
+bot        = { workspace = true }
+ledger     = { workspace = true }
+review     = { workspace = true }
+lens       = { workspace = true }
+wire       = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

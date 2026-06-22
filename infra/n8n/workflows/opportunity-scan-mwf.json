@@ -1,0 +1,103 @@
+{
+  "name": "EchoTrade — Opportunity Scan MWF",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1, 3, 5],
+              "triggerAtHour": 19,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-opportunity-scan",
+      "name": "Mon Wed Fri 19:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://echo-core:8000/reviews/opportunity-scans/run",
+        "method": "POST",
+        "sendBody": true,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Echo-Internal-Token",
+              "value": "={{ $env.ECHO_INTERNAL_API_TOKEN }}"
+            },
+            {
+              "name": "X-Echo-User-Id",
+              "value": "={{ $env.ECHO_AUTOMATION_USER_ID }}"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "cadence",
+              "value": "mwf"
+            },
+            {
+              "name": "limit",
+              "value": "12"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "run-opportunity-scan",
+      "name": "Run Opportunity Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.ECHO_DISCORD_WEBHOOK_ALERTS }}",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=[EchoTrade Opportunity Scan]\\n\\n{{$json.summary}}\\n\\nTop candidates:\\n{{ ($json.candidates || []).slice(0, 5).map(candidate => `${candidate.ticker} (${candidate.score})`).join('\\n') || 'None' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-opportunity-scan",
+      "name": "Discord Opportunity Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 0]
+    }
+  ],
+  "connections": {
+    "Mon Wed Fri 19:00": {
+      "main": [
+        [{ "node": "Run Opportunity Scan", "type": "main", "index": 0 }]
+      ]
+    },
+    "Run Opportunity Scan": {
+      "main": [
+        [{ "node": "Discord Opportunity Scan", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw"
+  },
+  "tags": [
+    { "name": "phase-4" },
+    { "name": "opportunity-scan" }
+  ]
+}

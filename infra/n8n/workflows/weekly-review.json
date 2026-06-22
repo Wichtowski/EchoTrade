@@ -1,0 +1,103 @@
+{
+  "name": "EchoTrade — Weekly Review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [7],
+              "triggerAtHour": 18,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "cron-weekly-review",
+      "name": "Sunday 18:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "http://echo-core:8000/reviews/weekly/run",
+        "method": "POST",
+        "sendBody": true,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Echo-Internal-Token",
+              "value": "={{ $env.ECHO_INTERNAL_API_TOKEN }}"
+            },
+            {
+              "name": "X-Echo-User-Id",
+              "value": "={{ $env.ECHO_AUTOMATION_USER_ID }}"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "reporting_currency",
+              "value": "PLN"
+            },
+            {
+              "name": "period_days",
+              "value": "7"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "run-weekly-review",
+      "name": "Run Weekly Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.ECHO_DISCORD_WEBHOOK_WEEKLY }}",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "=[EchoTrade Weekly Review]\\n\\n{{$json.summary}}\\n\\nWarnings:\\n{{ ($json.warnings || []).join('\\n') || 'None' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discord-weekly-review",
+      "name": "Discord Weekly Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 0]
+    }
+  ],
+  "connections": {
+    "Sunday 18:30": {
+      "main": [
+        [{ "node": "Run Weekly Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "Run Weekly Review": {
+      "main": [
+        [{ "node": "Discord Weekly Review", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Warsaw"
+  },
+  "tags": [
+    { "name": "phase-4" },
+    { "name": "weekly-review" }
+  ]
+}
