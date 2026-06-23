@@ -31,11 +31,12 @@ Environment files are resolved from `app/dash`:
 
 ## Deploy to Cloudflare Pages
 
-The repository includes `.github/workflows/deploy-dash.yml`, which:
+The repository includes `.github/workflows/release-deploy.yml`, which:
 
 - builds `app/dash`
 - deploys `dist/client` to Cloudflare Pages
-- expects `VITE_API_BASE_URL` to point at `https://api.oskarwichtowski.com`
+- injects `VITE_API_BASE_URL=https://apiechotrade.oskarwichtowski.com`
+- injects `VITE_APP_VERSION` from the release tag
 
 ## Features (Phase 1+)
 

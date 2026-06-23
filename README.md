@@ -2,135 +2,172 @@
 
 AI-powered portfolio assistant and controlled experimental trading lab.
 
+EchoTrade is built in layers: track the portfolio first, monitor it during market hours, generate daily and weekly intelligence, then add guarded paper trading and eventually tightly constrained live execution.
+
 ## Architecture
 
-```
+```text
 EchoTrade
 ├── app/
-│   ├── libshared/       — shared models, schemas, config, constants
-│   ├── libdb/           — SQLAlchemy models and database session
-│   ├── core/            — backend API (FastAPI)
-│   ├── dash/            — frontend dashboard (Next.js)
-│   ├── pulse/           — daily portfolio & market summaries
-│   ├── signal/          — AI analyst / signal generation
-│   ├── guard/           — risk evaluator and policy guard
-│   ├── bot/             — execution-only trader bot
-│   ├── ledger/          — decision and trade journal
-│   ├── review/          — post-trade review engine
-│   ├── lens/            — Playwright browser research
-│   └── wire/            — Discord notification layer
-├── phases/              — roadmap phase definitions
-└── docker-compose.yml
+│   ├── libshared/       - shared config, schemas, constants
+│   ├── libdb/           - SQLAlchemy models and database session
+│   ├── libworker/       - Celery app and shared worker tasks
+│   ├── core/            - FastAPI backend API
+│   ├── dash/            - Vike + React dashboard
+│   ├── pulse/           - daily portfolio and market summaries
+│   ├── signal/          - AI analyst and signal generation
+│   ├── guard/           - risk evaluator and policy guard
+│   ├── bot/             - execution-only trader bot
+│   ├── ledger/          - decision and trade journal
+│   ├── review/          - post-trade review engine
+│   ├── lens/            - browser research and chart capture
+│   └── wire/            - Discord notification layer
+├── infra/
+│   ├── n8n/             - workflow templates and orchestration notes
+│   ├── mailserver/      - docker-mailserver setup
+│   └── caddy/           - production reverse proxy config
+├── phases/              - roadmap phase definitions
+├── docker-compose.yml   - local development stack
+└── docker-compose.prod.yml
 ```
+
+## Prerequisites
+
+- `uv` for the Python workspace
+- `bun` for the dashboard
+- Docker Compose for local infrastructure
 
 ## Quick Start
 
 ```bash
-# 1. Install all Python workspace members
+# 1. Create local env file
+cp .env.example .env
+
+# 2. Install all Python workspace members
 uv sync
 
-# 2. Install dash frontend deps
-cd app/dash && bun install && cd ../..
+# 3. Install dashboard dependencies
+cd app/dash
+bun install
+cd ../..
 
-# 3. Start infrastructure (Postgres, RabbitMQ, n8n)
+# 4. Start local infrastructure
 make up
 
-# 4. Start the backend API
+# 5. Start the backend API
 make run-core
 
-# 5. Start Celery worker (separate terminal)
+# 6. Start the Celery worker in a second terminal
 make worker
 
-# 6. Start the dashboard (separate terminal)
+# 7. Start the dashboard in a third terminal
 make dash
 ```
 
-| Service | URL | Notes |
-|---------|-----|-------|
-| Core API | http://localhost:8000 | FastAPI + Swagger at `/docs` |
-| Dashboard | http://localhost:3000 | Vike dev server |
-| n8n | http://localhost:5678 | user: `echo` / pass: `echo` |
-| RabbitMQ | localhost:5672 | mgmt UI: http://localhost:15672 |
-| Postgres | localhost:5432 | db: `echotrade`, user: `echo` |
+The backend reads local configuration from `.env`. The dashboard reads its frontend env files from `app/dash/`.
 
-### Makefile targets
+## Local Services
+
+| Service | URL / Port | Notes |
+|---------|------------|-------|
+| Core API | http://localhost:8000 | FastAPI docs at `/docs` |
+| Dashboard | http://localhost:3000 | Vike dev server |
+| n8n | http://localhost:5678 | user: `echo`, pass: `echo` |
+| Postgres | localhost:5432 | db: `echotrade`, user: `echo`, pass: `echo` |
+| RabbitMQ | localhost:5672 | management UI at http://localhost:15672 |
+| Redis | localhost:6379 | cache and task support |
+| MongoDB | localhost:27017 | browser capture and saved query storage |
+| Mail | localhost:25 / 587 / 143 / 993 | docker-mailserver for invite delivery |
+
+## Common Commands
 
 ```bash
-make help       # show all targets
-make sync       # uv sync — install all Python members
-make up         # start Postgres + RabbitMQ + n8n
-make down       # stop infrastructure
-make run-core   # start Core API (uvicorn)
-make worker     # start Celery worker
-make beat       # start Celery beat scheduler
-make dash       # start Dash dev server (Vike)
-make lint       # lint all Python modules
-make test       # run all tests
+make help            # show all top-level targets
+make sync            # install Python workspace members
+make up              # start Postgres, RabbitMQ, Redis, MongoDB, n8n, mail
+make down            # stop local infrastructure
+make run-core        # start FastAPI app with reload
+make worker          # start Celery worker
+make beat            # start Celery beat scheduler
+make dash            # start dashboard dev server
+make backend-compose # build and run the backend stack with Docker Compose
+make lint            # lint all Python modules
+make test            # run tests for all Python modules
 ```
+
+## Environment
+
+Start from `.env.example`. Important groups include:
+
+- database and queue settings for Postgres, RabbitMQ, Redis, and MongoDB
+- market data and LLM provider keys
+- Discord webhook targets
+- internal automation auth via `ECHO_INTERNAL_API_TOKEN`
+- SMTP settings for invite delivery
+- frontend/API URLs such as `ECHO_PUBLIC_APP_URL`
+
+For n8n automations, set both `ECHO_INTERNAL_API_TOKEN` and `ECHO_AUTOMATION_USER_ID`. The workflow templates live in `infra/n8n/`.
+
+## Operating Rhythm
+
+EchoTrade is being built around a recurring portfolio loop before any serious live automation:
+
+1. Hourly during market hours: check held positions, price moves, concentration, and thesis-breaking alerts.
+2. Daily after market close: generate a portfolio report with value, P/L, allocation, risks, and commentary.
+3. Weekly: run a deeper evaluation of portfolio results, decisions, and changing risk.
+4. Three times per week: scan for new investment candidates with reasons and risks.
+
+This keeps the roadmap focused on portfolio intelligence first, then paper trading, and only later live execution.
 
 ## Time Horizons
 
-EchoTrade uses the following time-horizon definitions across all modules:
-
 | Horizon | Range | Description |
 |---------|-------|-------------|
-| Intraday | < 1 day | Same-session open/close. **Forbidden** for experimental account. |
-| Short-term | 1–5 days | Swing trade, up to one trading week. |
-| Medium-term | 1–8 weeks | Typical experimental trade range. |
-| Long-term | 2–6 months | Multi-month thesis; quarterly review. |
-| Strategic | > 6 months | Core conviction; semi-annual review. Personal portfolio default. |
+| Intraday | < 1 day | Same-session open/close. Forbidden for the experimental account. |
+| Short-term | 1-5 days | Swing trade, up to one trading week. |
+| Medium-term | 1-8 weeks | Typical experimental trade range. |
+| Long-term | 2-6 months | Multi-month thesis with quarterly review. |
+| Strategic | > 6 months | Core conviction with semi-annual review. |
 
 ## Phases
 
 | Phase | Name | Description |
 |-------|------|-------------|
 | 1 | Portfolio Tracker | Positions CRUD, prices, P/L, allocation, snapshots, trade journal |
-| 2 | Portfolio Monitoring | Hourly position checks during market hours + alerting |
-| 3 | Daily Reporting | Daily portfolio report via EchoPulse + EchoWire |
-| 4 | Weekly Evaluation & Opportunity Scans | Weekly portfolio reviews + three-times-weekly candidate scans |
-| 5 | Paper Trader | Simulated trading with EchoGuard + EchoBot |
-| 6 | Manual Approval Live Trading | Discord approval flow + real broker |
+| 2 | Portfolio Monitoring | Hourly position checks during market hours and alerting |
+| 3 | Daily Reporting | Daily portfolio report via EchoPulse and EchoWire |
+| 4 | Weekly Evaluation and Opportunity Scans | Weekly reviews plus Monday/Wednesday/Friday candidate scans |
+| 5 | Paper Trader | Simulated trading with EchoGuard and EchoBot |
+| 6 | Manual Approval Live Trading | Approval flow plus real broker |
 | 7 | Limited Autonomous Trading | Auto-execution within strict risk limits |
-
-## Operating Rhythm
-
-EchoTrade is being built around a recurring portfolio operating loop before any serious live automation:
-
-- Hourly during market hours: check held positions, price moves, concentration, and thesis-breaking alerts.
-- Daily after market close: generate a portfolio report with value, P/L, allocation, risks, and commentary.
-- Weekly: run a deeper evaluation of portfolio results, decisions, and changes in risk.
-- Three times per week: scan for potential new investments and "next Nvidia"-style candidates, with reasons and risks.
-
-This means the project should prioritise portfolio intelligence first:
-
-1. Real portfolio tracking and snapshots.
-2. Monitoring and reporting workflows.
-3. Evaluation and idea discovery.
-4. Paper trading for experimentation.
-5. Live execution only after the earlier layers are trustworthy.
 
 ## Safety
 
-EchoTrade prioritises transparency, auditability, and strict risk control.
+EchoTrade prioritizes transparency, auditability, and strict risk control.
 
-The correct trade execution flow is always:
+The execution flow is always:
 
+```text
+EchoSignal -> Trade Proposal -> EchoGuard -> EchoBot -> Broker API
 ```
-EchoSignal → Trade Proposal → EchoGuard → EchoBot → Broker API
+
+Never:
+
+```text
+LLM -> Broker API
 ```
 
-Never: `LLM → Broker API`
+## Deployment
 
-## Production Split
+Production is split across a static frontend target and a VPS-hosted backend stack:
 
-Production is now split across two targets:
-
-- `echodash.oskarwichtowski.com` -> Cloudflare Pages static dashboard from `app/dash/dist/client`
-- `api.oskarwichtowski.com` -> Contabo VPS backend API
-- `n8n.oskarwichtowski.com` -> Contabo VPS n8n
-- `mail.oskarwichtowski.com` -> Contabo VPS docker-mailserver
+- `echotrade.oskarwichtowski.com` -> Cloudflare Pages deployment of `app/dash/dist/client`
+- `apiechotrade.oskarwichtowski.com` -> backend API behind the VPS reverse proxy
+- `n8n.oskarwichtowski.com` -> n8n on the VPS
+- `mail.oskarwichtowski.com` -> docker-mailserver on the VPS
 
 GitHub Actions:
 
-- `.github/workflows/deploy-dash.yml` deploys the dashboard to Cloudflare Pages
-- `.github/workflows/deploy.yml` deploys the backend stack to the VPS
+- `.github/workflows/release-deploy.yml` creates or reuses a release version, deploys the backend to the VPS, and deploys the dashboard to Cloudflare Pages
+- each merge to `main` creates the next patch tag in the `x.y.z` series
+- manual dispatch redeploys both backend and dashboard for a chosen version or the latest tag
