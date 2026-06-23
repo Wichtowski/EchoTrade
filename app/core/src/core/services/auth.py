@@ -328,7 +328,7 @@ async def require_current_user(
 ) -> User:
     user = await get_optional_current_user(session, session_cookie)
     if user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=401, detail="Unauthorized")
     return user
 
 
@@ -338,7 +338,7 @@ async def require_owner_user(
 ) -> User:
     user = await require_current_user(session, session_cookie)
     if user.role != "owner":
-        raise HTTPException(status_code=403, detail="Owner access required")
+        raise HTTPException(status_code=403, detail="Forbidden")
     return user
 
 
@@ -353,12 +353,12 @@ async def get_request_user_id(
             try:
                 return UUID(header_user_id)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail="Invalid X-Echo-User-Id header") from exc
+                raise HTTPException(status_code=400, detail="Not Found") from exc
         result = await session.execute(select(User.id).order_by(User.created_at.asc()).limit(2))
         user_ids = list(result.scalars().all())
         if len(user_ids) == 1:
             return user_ids[0]
-        raise HTTPException(status_code=400, detail="X-Echo-User-Id header is required for multi-user automation")
+        raise HTTPException(status_code=400, detail="Not Found")
     user = await require_current_user(session, session_cookie)
     return user.id
 
