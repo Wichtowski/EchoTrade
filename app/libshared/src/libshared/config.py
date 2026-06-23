@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     mongodb_saved_query_collection: str = "saved_queries"
 
     # --- discord ---
-    discord_webhook_base: str = "https://discord.com/api/webhooks"
     discord_webhook_daily: str = ""
     discord_webhook_alerts: str = ""
     discord_webhook_proposals: str = ""
@@ -46,6 +45,7 @@ class Settings(BaseSettings):
     # --- frontend / api ---
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     public_app_url: str = "http://localhost:3000"
+    app_version: str = "dev"
 
     # --- auth ---
     auth_session_cookie_name: str = "echotrade_session"

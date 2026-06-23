@@ -79,4 +79,4 @@ app.include_router(reviews.router, prefix="/reviews", tags=["reviews"], dependen
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.app_version}

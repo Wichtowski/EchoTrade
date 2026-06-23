@@ -18,30 +18,15 @@ import httpx
 
 from libshared.config import settings
 
-DISCORD_BASE_API = settings.discord_webhook_base
-
-
-def _resolve_webhook(path: str) -> str:
-    """Combine base URL with webhook path."""
-    if not path:
-        return ""
-    if path.startswith("http"):
-        return path
-    return f"{DISCORD_BASE_API.rstrip('/')}{path}"
-
 
 async def send_message(webhook_path: str, content: str, embeds: list[dict] | None = None) -> bool:
     """Send a message to a Discord webhook."""
-    url = _resolve_webhook(webhook_path)
-    if not url:
-        return False
-
     payload: dict[str, object] = {"content": content}
     if embeds:
         payload["embeds"] = embeds
 
     async with httpx.AsyncClient() as client:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(webhook_path, json=payload)
         return resp.status_code in (200, 204)
 
 
