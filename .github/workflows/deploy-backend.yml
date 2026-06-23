@@ -1,23 +1,31 @@
 name: Deploy Backend
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "app/dash/**"
-      - ".github/workflows/deploy-dash.yml"
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Release tag to deploy, for example 1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
       DEPLOY_PATH: /srv/echotrade
       DEPLOY_ARCHIVE: echotrade-deploy.tar.gz
+      RELEASE_VERSION: ${{ inputs.version }}
+
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.version }}
+          fetch-depth: 0
 
       - name: Package repository
         run: |
@@ -54,12 +62,18 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           script_stop: true
-          envs: DEPLOY_PATH
+          envs: DEPLOY_PATH,RELEASE_VERSION
           script: |
+            set -euo pipefail
+
             mkdir -p "${DEPLOY_PATH}"
+
             cat > "${DEPLOY_PATH}/.env" <<'EOF'
             ${{ secrets.ENV_PRODUCTION }}
             EOF
+
+            sed -i '/^ECHO_APP_VERSION=/d' "${DEPLOY_PATH}/.env"
+            printf '\nECHO_APP_VERSION=%s\n' "${RELEASE_VERSION}" >> "${DEPLOY_PATH}/.env"
 
       - name: Deploy stack on VPS
         uses: appleboy/ssh-action@v1.2.0
@@ -71,11 +85,15 @@ jobs:
           script_stop: true
           envs: DEPLOY_PATH,DEPLOY_ARCHIVE
           script: |
-            set -eu
+            set -euo pipefail
+
             mkdir -p "${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
+
             find . -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+
             tar -xzf "/tmp/${DEPLOY_ARCHIVE}" -C "${DEPLOY_PATH}"
             rm -f "/tmp/${DEPLOY_ARCHIVE}"
+
             docker compose --env-file .env -f docker-compose.prod.yml up -d --build
             docker compose --env-file .env -f docker-compose.prod.yml ps
