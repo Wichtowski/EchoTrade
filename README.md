@@ -161,10 +161,10 @@ LLM -> Broker API
 
 Production is split across a static frontend target and a VPS-hosted backend stack:
 
-- `echotrade.oskarwichtowski.com` -> Cloudflare Pages deployment of `app/dash/dist/client`
-- `apiechotrade.oskarwichtowski.com` -> backend API behind the VPS reverse proxy
-- `n8n.oskarwichtowski.com` -> n8n on the VPS
-- `mail.oskarwichtowski.com` -> docker-mailserver on the VPS
+- `echotrade.oskarwichtowski.com`
+- `apiechotrade.oskarwichtowski.com`
+- `n8n.oskarwichtowski.com`
+- `mail.oskarwichtowski.com`
 
 GitHub Actions:
 
