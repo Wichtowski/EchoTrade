@@ -53,7 +53,6 @@ services:
       ECHO_REDIS_URL: redis://echo-redis:6379/0
       ECHO_MONGODB_URL: mongodb://echo-mongo:27017
       ECHO_MONGODB_DATABASE: echotrade
-      ECHO_MONGODB_CHART_COLLECTION: browser_chart_payloads
       ECHO_PUBLIC_APP_URL: ${ECHO_PUBLIC_APP_URL:-http://localhost:3000}
       ECHO_INTERNAL_API_TOKEN: ${ECHO_INTERNAL_API_TOKEN:-}
       ECHO_AUTH_COOKIE_SECURE: ${ECHO_AUTH_COOKIE_SECURE:-false}
@@ -86,7 +85,6 @@ services:
       ECHO_REDIS_URL: redis://echo-redis:6379/0
       ECHO_MONGODB_URL: mongodb://echo-mongo:27017
       ECHO_MONGODB_DATABASE: echotrade
-      ECHO_MONGODB_CHART_COLLECTION: browser_chart_payloads
     volumes:
       - .:/workspace
     depends_on:

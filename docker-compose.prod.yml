@@ -9,6 +9,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    expose:
+      - "5432"
+    networks:
+      - data_net
 
   echo-rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -18,18 +22,30 @@ services:
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    expose:
+      - "5672"
+    networks:
+      - data_net
 
   echo-redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - data_net
 
   echo-mongo:
     image: mongo:7
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
+    expose:
+      - "27017"
+    networks:
+      - data_net
 
   echo-core:
     build:
@@ -44,6 +60,18 @@ services:
       - echo-rabbitmq
       - echo-redis
       - echo-mongo
+    expose:
+      - "8000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - app_net
+      - data_net
 
   echo-worker:
     build:
@@ -58,6 +86,16 @@ services:
       - echo-rabbitmq
       - echo-redis
       - echo-mongo
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    networks:
+      - app_net
+      - data_net
 
   echo-n8n:
     image: n8nio/n8n:latest
@@ -83,6 +121,17 @@ services:
       - n8n_data:/home/node/.n8n
     depends_on:
       - echo-postgres
+    expose:
+      - "5678"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    networks:
+      - app_net
+      - data_net
 
   echo-caddy:
     image: caddy:2-alpine
@@ -99,6 +148,9 @@ services:
     depends_on:
       - echo-core
       - echo-n8n
+    networks:
+      - edge_net
+      - app_net
 
   echo-mail:
     image: ghcr.io/docker-mailserver/docker-mailserver:latest
@@ -120,6 +172,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
     cap_add:
       - NET_ADMIN
+    networks:
+      - mail_net
 
 volumes:
   pgdata:
@@ -129,3 +183,10 @@ volumes:
   mongo_data:
   caddy_data:
   caddy_config:
+
+networks:
+  edge_net:
+  app_net:
+  data_net:
+    internal: true
+  mail_net:

@@ -10,6 +10,17 @@ User: echo
 Pass: echo
 ```
 
+Production access is additionally protected at the Caddy layer with Basic Auth before traffic reaches n8n.
+Generate the Caddy-compatible password hash with:
+
+```bash
+caddy hash-password
+```
+
+Add the generated value to the GitHub Actions secret `N8N_BASIC_AUTH_HASH`, redeploy the backend stack, and test that the public n8n route asks for Basic Auth.
+
+In production, n8n stays on the private Docker app/data networks and is not published on a host port.
+
 ## Included Workflow Templates
 
 Import these from the n8n UI via **Settings → Import from File**.

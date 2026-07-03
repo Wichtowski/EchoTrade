@@ -26,3 +26,5 @@ infra/mailserver/docker-data/dms/config/*.db
 *.archive
 *.md
 !README.md
+
+.ssh/

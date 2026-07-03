@@ -79,6 +79,11 @@ jobs:
             sed -i '/^ECHO_APP_VERSION=/d' "${DEPLOY_PATH}/.env"
             printf '\nECHO_APP_VERSION=%s\n' "${RELEASE_VERSION}" >> "${DEPLOY_PATH}/.env"
 
+            sed -i '/^N8N_BASIC_AUTH_HASH=/d' "${DEPLOY_PATH}/.env"
+            cat >> "${DEPLOY_PATH}/.env" <<'EOF'
+            N8N_BASIC_AUTH_HASH=${{ secrets.N8N_BASIC_AUTH_HASH }}
+            EOF
+
       - name: Deploy stack on VPS
         uses: appleboy/ssh-action@v1.2.0
         with:
