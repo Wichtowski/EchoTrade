@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "echotrade",
+  "main": "vike:server-entry",
+  "compatibility_date": "2026-07-03",
+  "compatibility_flags": ["nodejs_compat"]
+}

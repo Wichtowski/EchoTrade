@@ -10,7 +10,7 @@ const appVersion =
 export default {
   extends: [vikeReact],
   clientRouting: true,
-  prerender: true,
+  server: true,
   htmlAttributes: {
     version: appVersion,
   },

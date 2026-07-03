@@ -41,7 +41,7 @@ jobs:
     secrets: inherit
 
   deploy_dash:
-    name: Deploy dashboard to Cloudflare Pages
+    name: Deploy dashboard to Cloudflare Workers
     needs: validate_ref
     uses: ./.github/workflows/deploy-frontend.yml
     secrets: inherit
