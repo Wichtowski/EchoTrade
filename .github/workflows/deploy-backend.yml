@@ -29,6 +29,8 @@ jobs:
 
       - name: Package repository
         run: |
+          rm -f "${DEPLOY_ARCHIVE}" "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}"
+
           tar \
             --exclude=.git \
             --exclude=.github \
@@ -42,7 +44,9 @@ jobs:
             --exclude=infra/mailserver/docker-data/dms/mail-logs \
             --exclude=infra/mailserver/docker-data/dms/config/postfix-accounts.cf \
             --exclude=infra/mailserver/docker-data/dms/config/postfix-virtual.cf \
-            -czf "${DEPLOY_ARCHIVE}" .
+            -czf "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" .
+
+          cp "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" "${DEPLOY_ARCHIVE}"
 
       - name: Copy release archive to VPS
         uses: appleboy/scp-action@v0.1.7
