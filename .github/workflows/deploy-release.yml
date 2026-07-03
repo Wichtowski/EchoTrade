@@ -2,68 +2,46 @@ name: Deploy Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: Release tag to deploy, for example 1.2.3
-        required: true
-        type: string
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
-  group: deploy-release-${{ inputs.version }}
+  group: deploy-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  validate_tag:
-    name: Validate release tag
+  validate_ref:
+    name: Validate selected ref
     runs-on: ubuntu-latest
 
-    outputs:
-      version: ${{ steps.validate.outputs.version }}
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate tag
-        id: validate
+      - name: Validate selected tag
         shell: bash
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          git fetch --tags --force
+          if [[ "$RELEASE_REF" != refs/tags/* ]]; then
+            echo "::error::Deploy Release must run from a release tag. Selected ref: $RELEASE_REF"
+            exit 1
+          fi
 
           if ! [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid release tag: $RELEASE_VERSION"
             exit 1
           fi
 
-          if ! git rev-parse -q --verify "refs/tags/$RELEASE_VERSION" >/dev/null; then
-            echo "::error::Tag does not exist: $RELEASE_VERSION"
-            exit 1
-          fi
-
-          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-
   deploy_backend:
     name: Deploy backend to VPS
-    needs: validate_tag
+    needs: validate_ref
     uses: ./.github/workflows/deploy-backend.yml
-    with:
-      version: ${{ needs.validate_tag.outputs.version }}
     secrets: inherit
 
   deploy_dash:
     name: Deploy dashboard to Cloudflare Pages
-    needs: validate_tag
+    needs: validate_ref
     uses: ./.github/workflows/deploy-frontend.yml
-    with:
-      version: ${{ needs.validate_tag.outputs.version }}
     secrets: inherit

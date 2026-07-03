@@ -2,14 +2,14 @@ name: Deploy Backend
 
 on:
   workflow_call:
-    inputs:
-      version:
-        description: Release tag to deploy, for example 1.2.3
-        required: true
-        type: string
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: deploy-backend-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -18,14 +18,14 @@ jobs:
     env:
       DEPLOY_PATH: /srv/echotrade
       DEPLOY_ARCHIVE: echotrade-deploy.tar.gz
-      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_VERSION: ${{ github.ref_name }}
 
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v4
+      - name: Checkout selected ref
+        uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ inputs.version }}
           fetch-depth: 0
+          ref: ${{ github.ref }}
 
       - name: Package repository
         run: |
