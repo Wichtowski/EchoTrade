@@ -10,7 +10,7 @@
 {$ECHO_N8N_HOST} {
 	encode zstd gzip
 	basicauth {
-		admin {$N8N_BASIC_AUTH_HASH}
+		admin $2a$14${N8N_BASIC_AUTH_HASH}
 	}
 	reverse_proxy echo-n8n:5678
 }
