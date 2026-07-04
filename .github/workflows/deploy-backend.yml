@@ -98,6 +98,12 @@ jobs:
 
             # ensure mailserver env is present (written from secret)
             mkdir -p "${DEPLOY_PATH}/infra/mailserver"
+            # Set parent directory permissions to allow writing/replacing the file
+            chmod 755 "${DEPLOY_PATH}/infra/mailserver"
+            # Make sure we can overwrite the existing file if it exists
+            if [ -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" ]; then
+              chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || true
+            fi
             cat > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" <<'EOF'
             ${{ secrets.DOCKER_MAILSERVER_ENV }}
             EOF
