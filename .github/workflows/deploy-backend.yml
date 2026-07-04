@@ -98,17 +98,18 @@ jobs:
 
             # ensure mailserver env is present (written from secret)
             mkdir -p "${DEPLOY_PATH}/infra/mailserver"
-            # Set parent directory permissions to allow writing/replacing the file
             chmod 755 "${DEPLOY_PATH}/infra/mailserver"
-            # Make sure we can overwrite the existing file if it exists
+            
             if [ -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" ]; then
-              chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || true
+              rm -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || sudo rm -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || true
             fi
-            cat > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" <<'EOF'
-            ${{ secrets.DOCKER_MAILSERVER_ENV }}
-            EOF
 
-            chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+            if echo "${{ secrets.DOCKER_MAILSERVER_ENV }}" > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" 2>/dev/null; then
+              chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+            else
+              echo "${{ secrets.DOCKER_MAILSERVER_ENV }}" | sudo tee "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" >/dev/null
+              sudo chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+            fi
 
             docker compose --env-file .env -f docker-compose.prod.yml up -d --build
             docker compose --env-file .env -f docker-compose.prod.yml ps
