@@ -59,8 +59,27 @@ jobs:
           sed -i '/^ECHO_APP_VERSION=/d' .env.production
           printf '\nECHO_APP_VERSION=%s\n' "${RELEASE_VERSION}" >> .env.production
 
+      - name: Write mailserver env on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          envs: DEPLOY_PATH
+          script: |
+            set -euo pipefail
+
+            mkdir -p "${DEPLOY_PATH}/infra/mailserver"
+
+            cat > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" <<'EOF'
+            ${{ secrets.DOCKER_MAILSERVER_ENV }}
+            EOF
+
+            chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+
       - name: Copy release files to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -78,7 +97,7 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           script_stop: true
           envs: DEPLOY_PATH,DEPLOY_ARCHIVE
-          command_timeout: 10m
+          command_timeout: "5m"
           script: |
             set -euo pipefail
 
