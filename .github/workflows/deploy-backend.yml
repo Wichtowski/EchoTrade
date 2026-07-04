@@ -41,7 +41,7 @@ jobs:
             --exclude=app/dash/dist \
             --exclude=.env \
             --exclude=.env.* \
-            --exclude=infra/mailserver/docker-data \
+            --exclude=infra/mailserver \
             -czf "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" .
 
           cp "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" "${DEPLOY_ARCHIVE}"
