@@ -82,7 +82,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: uv run uvicorn core.app:app --host 0.0.0.0 --port 8000
+    command: /opt/venv/bin/uvicorn core.app:app --host 0.0.0.0 --port 8000
     depends_on:
       - echo-postgres
       - echo-rabbitmq
@@ -116,7 +116,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    command: uv run celery -A libworker.celery_app worker --loglevel=info --without-gossip --without-mingle
+    command: /opt/venv/bin/celery -A libworker.celery_app worker --loglevel=info --without-gossip --without-mingle
     depends_on:
       - echo-postgres
       - echo-rabbitmq
@@ -191,8 +191,8 @@ services:
     env_file:
       - .env
     ports:
-      - "80:80"
-      - "443:443"
+      - "${ECHO_HTTP_PORT}:80"
+      - "${ECHO_HTTPS_PORT}:443"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -219,10 +219,10 @@ services:
     env_file:
       - ./infra/mailserver/docker-mailserver.env
     ports:
-      - "25:25"
-      - "587:587"
-      - "143:143"
-      - "993:993"
+      - "${ECHO_MAIL_PORT_25}:25"
+      - "${ECHO_MAIL_PORT_587}:587"
+      - "${ECHO_MAIL_PORT_143}:143"
+      - "${ECHO_MAIL_PORT_993}:993"
     volumes:
       - ./infra/mailserver/docker-data/dms/mail-data/:/var/mail/
       - ./infra/mailserver/docker-data/dms/mail-state/:/var/mail-state/
@@ -233,6 +233,7 @@ services:
       - NET_ADMIN
     networks:
       - mail_net
+      - app_net
     logging:
       driver: json-file
       options:

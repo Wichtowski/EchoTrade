@@ -85,7 +85,13 @@ jobs:
             mkdir -p "${DEPLOY_PATH}"
             cd "${DEPLOY_PATH}"
 
-            find . -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+            # Stop existing containers if running, to free up any active bind mounts
+            if [ -f docker-compose.prod.yml ] && [ -f .env ]; then
+              docker compose --env-file .env -f docker-compose.prod.yml down || true
+            fi
+
+            # Clean up the codebase except .env and the infra/ directory (to avoid deleting root-owned/active files)
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'infra' -exec rm -rf {} +
 
             mv /tmp/.env.production "${DEPLOY_PATH}/.env"
             chmod 600 "${DEPLOY_PATH}/.env"
