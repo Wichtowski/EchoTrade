@@ -3,5 +3,25 @@
   "name": "echotrade",
   "main": "vike:server-entry",
   "compatibility_date": "2026-07-03",
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "logpush": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "persist": true,
+      "head_sampling_rate": 1,
+      "destinations": []
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 0.1,
+      "destinations": []
+    }
+  }
 }
+
+  
