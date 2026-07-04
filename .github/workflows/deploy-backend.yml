@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DEPLOY_PATH: /srv/echotrade
-      DEPLOY_ARCHIVE: echotrade-deploy.tar.gz
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_ARCHIVE: ${{ vars.DEPLOY_ARCHIVE }}
       RELEASE_VERSION: ${{ github.ref_name }}
 
     steps:
@@ -39,6 +39,8 @@ jobs:
             --exclude=dist \
             --exclude=app/dash/node_modules \
             --exclude=app/dash/dist \
+            --exclude=.env \
+            --exclude=.env.* \
             --exclude=infra/mailserver/docker-data/dms/mail-data \
             --exclude=infra/mailserver/docker-data/dms/mail-state \
             --exclude=infra/mailserver/docker-data/dms/mail-logs \
@@ -48,36 +50,24 @@ jobs:
 
           cp "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" "${DEPLOY_ARCHIVE}"
 
-      - name: Copy release archive to VPS
+      - name: Build production env file
+        run: |
+          cat > .env.production <<'EOF'
+          ${{ secrets.ENV_PRODUCTION }}
+          EOF
+
+          sed -i '/^ECHO_APP_VERSION=/d' .env.production
+          printf '\nECHO_APP_VERSION=%s\n' "${RELEASE_VERSION}" >> .env.production
+
+      - name: Copy release files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          source: ${{ env.DEPLOY_ARCHIVE }}
+          source: "${{ env.DEPLOY_ARCHIVE }},.env.production"
           target: /tmp
-
-      - name: Write production environment file
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
-          script_stop: true
-          envs: DEPLOY_PATH,RELEASE_VERSION
-          script: |
-            set -euo pipefail
-
-            mkdir -p "${DEPLOY_PATH}"
-
-            cat > "${DEPLOY_PATH}/.env" <<'EOF'
-            ${{ secrets.ENV_PRODUCTION }}
-            EOF
-
-            sed -i '/^ECHO_APP_VERSION=/d' "${DEPLOY_PATH}/.env"
-            printf '\nECHO_APP_VERSION=%s\n' "${RELEASE_VERSION}" >> "${DEPLOY_PATH}/.env"
 
       - name: Deploy stack on VPS
         uses: appleboy/ssh-action@v1.2.0
@@ -88,6 +78,7 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           script_stop: true
           envs: DEPLOY_PATH,DEPLOY_ARCHIVE
+          command_timeout: 10m
           script: |
             set -euo pipefail
 
@@ -95,6 +86,9 @@ jobs:
             cd "${DEPLOY_PATH}"
 
             find . -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+
+            mv /tmp/.env.production "${DEPLOY_PATH}/.env"
+            chmod 600 "${DEPLOY_PATH}/.env"
 
             tar -xzf "/tmp/${DEPLOY_ARCHIVE}" -C "${DEPLOY_PATH}"
             rm -f "/tmp/${DEPLOY_ARCHIVE}"

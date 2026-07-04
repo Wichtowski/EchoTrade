@@ -1,0 +1,60 @@
+name: Backend Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do?
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+          - restart
+
+permissions:
+  contents: read
+
+jobs:
+  backend-control:
+    runs-on: ubuntu-latest
+
+    env:
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+
+    steps:
+      - name: Control backend on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
+          script_stop: true
+          command_timeout: 10m
+          envs: DEPLOY_PATH
+          script: |
+            set -euo pipefail
+
+            cd "${DEPLOY_PATH}"
+
+            case "${{ github.event.inputs.action }}" in
+              start)
+                docker compose --env-file .env -f docker-compose.prod.yml up -d echo-core echo-worker
+                ;;
+
+              stop)
+                docker compose --env-file .env -f docker-compose.prod.yml stop echo-core echo-worker
+                ;;
+
+              restart)
+                docker compose --env-file .env -f docker-compose.prod.yml restart echo-core echo-worker
+                ;;
+
+              *)
+                echo "Unknown action"
+                exit 1
+                ;;
+            esac
+
+            docker compose --env-file .env -f docker-compose.prod.yml ps
