@@ -13,6 +13,13 @@ services:
       - "5432"
     networks:
       - data_net
+    mem_limit: 1g
+    cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-rabbitmq:
     image: rabbitmq:4-management-alpine
@@ -26,6 +33,13 @@ services:
       - "5672"
     networks:
       - data_net
+    mem_limit: 512mb
+    cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-redis:
     image: redis:7-alpine
@@ -36,6 +50,13 @@ services:
       - "6379"
     networks:
       - data_net
+    mem_limit: 256m
+    cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-mongo:
     image: mongo:7
@@ -46,6 +67,13 @@ services:
       - "27017"
     networks:
       - data_net
+    mem_limit: 768m
+    cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-core:
     build:
@@ -72,6 +100,14 @@ services:
     networks:
       - app_net
       - data_net
+    mem_limit: 768m
+    cpus: "1.0"
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-worker:
     build:
@@ -96,6 +132,14 @@ services:
     networks:
       - app_net
       - data_net
+    mem_limit: 1g
+    cpus: "1.5"
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-n8n:
     image: n8nio/n8n:latest
@@ -132,6 +176,14 @@ services:
     networks:
       - app_net
       - data_net
+    mem_limit: 768m
+    cpus: "1.0"
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-caddy:
     image: caddy:2-alpine
@@ -151,6 +203,13 @@ services:
     networks:
       - edge_net
       - app_net
+    mem_limit: 256m
+    cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   echo-mail:
     image: ghcr.io/docker-mailserver/docker-mailserver:latest
@@ -174,6 +233,11 @@ services:
       - NET_ADMIN
     networks:
       - mail_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:
