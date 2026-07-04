@@ -41,11 +41,7 @@ jobs:
             --exclude=app/dash/dist \
             --exclude=.env \
             --exclude=.env.* \
-            --exclude=infra/mailserver/docker-data/dms/mail-data \
-            --exclude=infra/mailserver/docker-data/dms/mail-state \
-            --exclude=infra/mailserver/docker-data/dms/mail-logs \
-            --exclude=infra/mailserver/docker-data/dms/config/postfix-accounts.cf \
-            --exclude=infra/mailserver/docker-data/dms/config/postfix-virtual.cf \
+            --exclude=infra/mailserver/docker-data \
             -czf "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" .
 
           cp "${RUNNER_TEMP}/${DEPLOY_ARCHIVE}" "${DEPLOY_ARCHIVE}"
@@ -96,7 +92,8 @@ jobs:
             mv /tmp/.env.production "${DEPLOY_PATH}/.env"
             chmod 600 "${DEPLOY_PATH}/.env"
 
-            tar -xzf "/tmp/${DEPLOY_ARCHIVE}" -C "${DEPLOY_PATH}"
+            # Extract the codebase. Use --no-overwrite-dir to avoid metadata modification/utime errors on existing directories
+            tar -xzf "/tmp/${DEPLOY_ARCHIVE}" --no-overwrite-dir -C "${DEPLOY_PATH}"
             rm -f "/tmp/${DEPLOY_ARCHIVE}"
 
             # ensure mailserver env is present (written from secret)
