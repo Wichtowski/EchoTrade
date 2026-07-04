@@ -224,10 +224,10 @@ services:
       - "${ECHO_MAIL_PORT_143}:143"
       - "${ECHO_MAIL_PORT_993}:993"
     volumes:
-      - ./infra/mailserver/docker-data/dms/mail-data/:/var/mail/
-      - ./infra/mailserver/docker-data/dms/mail-state/:/var/mail-state/
-      - ./infra/mailserver/docker-data/dms/mail-logs/:/var/log/mail/
-      - ./infra/mailserver/docker-data/dms/config/:/tmp/docker-mailserver/
+      - mail_data:/var/mail/
+      - mail_state:/var/mail-state/
+      - mail_logs:/var/log/mail/
+      - mail_config:/tmp/docker-mailserver/
       - /etc/localtime:/etc/localtime:ro
     cap_add:
       - NET_ADMIN
@@ -248,6 +248,10 @@ volumes:
   mongo_data:
   caddy_data:
   caddy_config:
+  mail_data:
+  mail_state:
+  mail_logs:
+  mail_config:
 
 networks:
   edge_net:

@@ -99,17 +99,10 @@ jobs:
             # ensure mailserver env is present (written from secret)
             mkdir -p "${DEPLOY_PATH}/infra/mailserver"
             chmod 755 "${DEPLOY_PATH}/infra/mailserver"
-            
-            if [ -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" ]; then
-              rm -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || sudo rm -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" || true
-            fi
 
-            if echo "${{ secrets.DOCKER_MAILSERVER_ENV }}" > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" 2>/dev/null; then
-              chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
-            else
-              echo "${{ secrets.DOCKER_MAILSERVER_ENV }}" | sudo tee "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env" >/dev/null
-              sudo chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
-            fi
+            rm -f "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+            printf '%s\n' "${{ secrets.DOCKER_MAILSERVER_ENV }}" > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
+            chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
 
             docker compose --env-file .env -f docker-compose.prod.yml up -d --build
             docker compose --env-file .env -f docker-compose.prod.yml ps
