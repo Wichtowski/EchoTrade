@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   backend-control:
+    name: Backend Control — ${{ github.event.inputs.action }}
     runs-on: ubuntu-latest
 
     env:
