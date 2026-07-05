@@ -21,6 +21,7 @@ jobs:
 
     env:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      ACTION: ${{ github.event.inputs.action }}
 
     steps:
       - name: Control backend on VPS
@@ -32,29 +33,21 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           script_stop: true
           command_timeout: 10m
-          envs: DEPLOY_PATH
+          envs: DEPLOY_PATH,ACTION
           script: |
             set -euo pipefail
 
             cd "${DEPLOY_PATH}"
 
-            case "${{ github.event.inputs.action }}" in
-              start)
-                docker compose --env-file .env -f docker-compose.prod.yml up -d echo-core echo-worker
-                ;;
-
-              stop)
-                docker compose --env-file .env -f docker-compose.prod.yml stop echo-core echo-worker
-                ;;
-
-              restart)
-                docker compose --env-file .env -f docker-compose.prod.yml restart echo-core echo-worker
-                ;;
-
-              *)
-                echo "Unknown action"
-                exit 1
-                ;;
-            esac
+            if [ "${ACTION}" = "start" ]; then
+              docker compose --env-file .env -f docker-compose.prod.yml up -d echo-core echo-worker
+            elif [ "${ACTION}" = "stop" ]; then
+              docker compose --env-file .env -f docker-compose.prod.yml stop echo-core echo-worker
+            elif [ "${ACTION}" = "restart" ]; then
+              docker compose --env-file .env -f docker-compose.prod.yml restart echo-core echo-worker
+            else
+              echo "Unknown action: ${ACTION}"
+              exit 1
+            fi
 
             docker compose --env-file .env -f docker-compose.prod.yml ps
