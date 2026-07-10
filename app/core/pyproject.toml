@@ -13,6 +13,7 @@ dependencies = [
     "libshared",
     "libdb",
     "libworker",
+    "guard",
 ]
 
 [build-system]

@@ -376,6 +376,7 @@ source = { editable = "app/core" }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "fastapi" },
+    { name = "guard" },
     { name = "httpx" },
     { name = "libdb" },
     { name = "libshared" },
@@ -389,6 +390,7 @@ dependencies = [
 requires-dist = [
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "fastapi", specifier = ">=0.111" },
+    { name = "guard", editable = "app/guard" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "libdb", editable = "app/libdb" },
     { name = "libshared", editable = "app/libshared" },

@@ -9,7 +9,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -542,6 +541,7 @@ class TradeProposalSource(BaseModel):
 
 
 class TradeProposalCreate(BaseModel):
+    account_type: AccountType = AccountType.EXPERIMENTAL
     ticker: str
     action: TradeAction
     amount: float
@@ -562,6 +562,7 @@ class TradeProposalCreate(BaseModel):
 class TradeProposalOut(BaseModel):
     id: UUID
     created_at: datetime
+    account_type: AccountType
     ticker: str
     action: TradeAction
     amount: float
@@ -576,9 +577,14 @@ class TradeProposalOut(BaseModel):
     review_date: datetime | None
     confidence: float | None
     used_browser_context: bool
+    sources: Any | None = None
     status: ProposalStatus
 
     model_config = {"from_attributes": True}
+
+
+class TradeProposalDecisionRequest(BaseModel):
+    reason: str | None = None
 
 
 class RiskCheckResult(BaseModel):
@@ -593,6 +599,59 @@ class RiskCheckResult(BaseModel):
     monthly_budget_remaining: float | None = None
     daily_loss: float | None = None
     monthly_loss: float | None = None
+
+
+class RiskEvaluateRequest(BaseModel):
+    proposal_id: UUID
+
+
+class RiskCheckOut(BaseModel):
+    id: UUID
+    proposal_id: UUID
+    created_at: datetime
+    passed: bool
+    failed_rules: list[str]
+    warnings: list[str]
+    position_size_after_trade: float | None
+    sector_exposure_after_trade: float | None
+    monthly_budget_remaining: float | None
+    daily_loss: float | None
+    monthly_loss: float | None
+    evaluator_summary: str | None
+
+
+class ExecutedTradeOut(BaseModel):
+    id: UUID
+    proposal_id: UUID
+    broker_order_id: str | None
+    ticker: str
+    action: TradeAction
+    quantity: float
+    price: float
+    fees: float
+    currency: Currency
+    status: str
+    executed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TraderExecuteRequest(BaseModel):
+    proposal_id: UUID
+
+
+class PaperTradingStatusOut(BaseModel):
+    status: TradingStatus
+    mode: str = "paper"
+    monthly_budget_remaining: float
+    monthly_budget_used: float
+    max_monthly_budget: float
+    daily_trades_remaining: int
+    pending_proposals: int
+    approved_proposals: int
+    executed_trades: int
+    cooldown_until: datetime | None = None
+    last_trade_at: datetime | None = None
 
 
 class LensObservation(BaseModel):

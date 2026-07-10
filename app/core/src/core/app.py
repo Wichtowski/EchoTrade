@@ -6,14 +6,23 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-
-from core.routers import auth, investment_plans, market, portfolio, positions, reviews, trades
-from core.services.auth import require_app_access_dependency
 from libdb.models import Base
 from libdb.session import engine
 from libshared.config import settings
+from sqlalchemy import text
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+from core.routers import (
+    auth,
+    investment_plans,
+    market,
+    portfolio,
+    positions,
+    reviews,
+    trades,
+    trading,
+)
+from core.services.auth import require_app_access_dependency
 
 
 async def run_startup_repairs() -> None:
@@ -30,6 +39,16 @@ async def run_startup_repairs() -> None:
         "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE weekly_reviews ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE opportunity_scans ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE trading_budgets ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE trading_budgets ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'experimental'",
+        "ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'experimental'",
+        "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS sources JSONB",
+        "ALTER TABLE risk_checks ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE executed_trades ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE post_trade_reviews ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE risk_rules ADD COLUMN IF NOT EXISTS user_id UUID",
     ]
     async with engine.begin() as connection:
         for statement in statements:
@@ -75,6 +94,7 @@ app.include_router(
 app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"], dependencies=protected_dependencies)
 app.include_router(market.router, prefix="/market", tags=["market"], dependencies=protected_dependencies)
 app.include_router(reviews.router, prefix="/reviews", tags=["reviews"], dependencies=protected_dependencies)
+app.include_router(trading.router, tags=["trading"], dependencies=protected_dependencies)
 
 
 @app.get("/health")

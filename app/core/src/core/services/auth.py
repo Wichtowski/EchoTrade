@@ -2,25 +2,45 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
+import smtplib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
-import hashlib
-import secrets
-import smtplib
 from uuid import UUID
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import Cookie, Depends, Header, HTTPException
-from sqlalchemy import Select, delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from libdb.models import Invite, InvestmentPlan, InvestmentPlanAmountChange, InvestmentPlanOneOffContribution, InvestmentPlanPause, InvestmentPlanTarget, ManualTrade, OpportunityScan, PortfolioSnapshot, Position, User, UserSession, WeeklyReview
+from libdb.models import (
+    AgentDecision,
+    ExecutedTrade,
+    InvestmentPlan,
+    InvestmentPlanAmountChange,
+    InvestmentPlanOneOffContribution,
+    InvestmentPlanPause,
+    InvestmentPlanTarget,
+    Invite,
+    ManualTrade,
+    OpportunityScan,
+    PortfolioSnapshot,
+    Position,
+    PostTradeReview,
+    RiskCheck,
+    RiskRule,
+    TradeProposal,
+    TradingBudget,
+    User,
+    UserSession,
+    WeeklyReview,
+)
 from libdb.session import get_session
 from libshared.config import settings
 from libshared.schemas import InviteDeliveryState, InviteOut, UserOut
+from sqlalchemy import Select, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 password_hasher = PasswordHasher()
 
@@ -138,7 +158,20 @@ async def create_invited_user(
 
 
 async def backfill_legacy_data_to_user(session: AsyncSession, user_id: UUID) -> None:
-    for model in [ManualTrade, Position, InvestmentPlan, PortfolioSnapshot, WeeklyReview, OpportunityScan]:
+    for model in [
+        ManualTrade,
+        Position,
+        InvestmentPlan,
+        PortfolioSnapshot,
+        WeeklyReview,
+        OpportunityScan,
+        TradingBudget,
+        AgentDecision,
+        TradeProposal,
+        RiskCheck,
+        ExecutedTrade,
+        PostTradeReview,
+    ]:
         result = await session.execute(select(model).where(model.user_id.is_(None)))  # type: ignore[arg-type]
         for row in result.scalars().all():
             row.user_id = user_id
@@ -263,6 +296,13 @@ async def delete_invited_user_workspace(
     await session.execute(delete(PortfolioSnapshot).where(PortfolioSnapshot.user_id == user_id))
     await session.execute(delete(WeeklyReview).where(WeeklyReview.user_id == user_id))
     await session.execute(delete(OpportunityScan).where(OpportunityScan.user_id == user_id))
+    await session.execute(delete(PostTradeReview).where(PostTradeReview.user_id == user_id))
+    await session.execute(delete(ExecutedTrade).where(ExecutedTrade.user_id == user_id))
+    await session.execute(delete(RiskCheck).where(RiskCheck.user_id == user_id))
+    await session.execute(delete(TradeProposal).where(TradeProposal.user_id == user_id))
+    await session.execute(delete(AgentDecision).where(AgentDecision.user_id == user_id))
+    await session.execute(delete(TradingBudget).where(TradingBudget.user_id == user_id))
+    await session.execute(delete(RiskRule).where(RiskRule.user_id == user_id))
     await session.execute(delete(UserSession).where(UserSession.user_id == user_id))
     await session.execute(delete(Invite).where(Invite.created_by_user_id == user_id))
     accepted_invites = await session.execute(select(Invite).where(Invite.accepted_by_user_id == user_id))

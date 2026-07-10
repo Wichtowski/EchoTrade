@@ -277,6 +277,8 @@ class TradingBudget(Base):
     __tablename__ = "trading_budgets"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    account_type: Mapped[str] = mapped_column(Text, nullable=False, default="experimental")
     month: Mapped[str] = mapped_column(Text, nullable=False)
     starting_budget: Mapped[float] = mapped_column(Numeric, nullable=False)
     used_budget: Mapped[float] = mapped_column(Numeric, default=0)
@@ -292,6 +294,7 @@ class AgentDecision(Base):
     __tablename__ = "agent_decisions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     agent_name: Mapped[str] = mapped_column(Text, nullable=False)
     account_type: Mapped[str] = mapped_column(Text, nullable=False)
@@ -311,6 +314,8 @@ class TradeProposal(Base):
     __tablename__ = "trade_proposals"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    account_type: Mapped[str] = mapped_column(Text, nullable=False, default="experimental")
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     ticker: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
@@ -320,12 +325,13 @@ class TradeProposal(Base):
     limit_price: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     thesis: Mapped[str | None] = mapped_column(Text, nullable=True)
-    risks: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    risks: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     invalidated_if: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_holding_period: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_date: Mapped[datetime | None] = mapped_column(nullable=True)
     confidence: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     used_browser_context: Mapped[bool] = mapped_column(Boolean, default=False)
+    sources: Mapped[list[dict[str, str | None]] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
 
 
@@ -333,13 +339,14 @@ class RiskCheck(Base):
     __tablename__ = "risk_checks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     proposal_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trade_proposals.id"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    failed_rules: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    warnings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    failed_rules: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    warnings: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     position_size_after_trade: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     sector_exposure_after_trade: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     monthly_budget_remaining: Mapped[float | None] = mapped_column(Numeric, nullable=True)
@@ -352,6 +359,7 @@ class ExecutedTrade(Base):
     __tablename__ = "executed_trades"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     proposal_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trade_proposals.id"), nullable=False
     )
@@ -370,6 +378,7 @@ class PostTradeReview(Base):
     __tablename__ = "post_trade_reviews"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     trade_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("executed_trades.id"), nullable=False
     )
@@ -387,6 +396,7 @@ class RiskRule(Base):
     __tablename__ = "risk_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
