@@ -15,7 +15,6 @@ Channels:
 from __future__ import annotations
 
 import httpx
-
 from libshared.config import settings
 
 
@@ -57,10 +56,6 @@ async def send_journal_entry(content: str) -> bool:
 async def send_override(content: str) -> bool:
     return await send_message(settings.discord_webhook_override, content)
 
-
-# ---------------------------------------------------------------------------
-# Test helper — send a test message to every configured webhook
-# ---------------------------------------------------------------------------
 
 _CHANNELS = {
     "daily": ("discord_webhook_daily", "#echo-daily"),

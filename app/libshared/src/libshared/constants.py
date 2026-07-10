@@ -1,5 +1,3 @@
-"""Global constants for EchoTrade."""
-
 from __future__ import annotations
 
 # Initial experimental whitelist
@@ -44,9 +42,6 @@ RISK_RULES: list[str] = [
     "missing_proposal_fields",
 ]
 
-# ---------------------------------------------------------------------------
-# Time horizon definitions
-# ---------------------------------------------------------------------------
 # Used by EchoSignal when generating trade proposals and by EchoGuard when
 # validating that a proposal's expected_holding_period is sensible.
 

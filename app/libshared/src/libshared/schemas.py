@@ -1,34 +1,29 @@
-"""Shared Pydantic schemas used across EchoTrade services."""
-
 from __future__ import annotations
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
 
-class AccountType(str, Enum):
+class AccountType(StrEnum):
     PERSONAL = "personal"
     EXPERIMENTAL = "experimental"
 
 
-class TradeAction(str, Enum):
+class TradeAction(StrEnum):
     BUY = "BUY"
     SELL = "SELL"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     MARKET = "MARKET"
     LIMIT = "LIMIT"
 
 
-class ProposalStatus(str, Enum):
+class ProposalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
@@ -36,20 +31,20 @@ class ProposalStatus(str, Enum):
     EXPIRED = "expired"
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class Confidence(str, Enum):
+class Confidence(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
-class TimeHorizon(str, Enum):
+class TimeHorizon(StrEnum):
     INTRADAY = "intraday"       # < 1 day
     SHORT_TERM = "short_term"   # 1–5 days
     MEDIUM_TERM = "medium_term" # 1–8 weeks
@@ -57,34 +52,34 @@ class TimeHorizon(str, Enum):
     STRATEGIC = "strategic"     # > 6 months
 
 
-class TradingStatus(str, Enum):
+class TradingStatus(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     BUDGET_EXHAUSTED = "budget_exhausted"
     DRAWDOWN_LIMIT = "drawdown_limit"
 
 
-class Currency(str, Enum):
+class Currency(StrEnum):
     PLN = "PLN"
     USD = "USD"
     EUR = "EUR"
     GBP = "GBP"
 
 
-class Broker(str, Enum):
+class Broker(StrEnum):
     XTB = "XTB"
     REVOLUT = "Revolut"
 
 
-class BrowserCaptureProvider(str, Enum):
+class BrowserCaptureProvider(StrEnum):
     CNBC = "cnbc"
 
 
-class SavedQueryKind(str, Enum):
+class SavedQueryKind(StrEnum):
     BROWSER_CHART = "browser_chart"
 
 
-class Sector(str, Enum):
+class Sector(StrEnum):
     SEMIS = "semis"
     REAL_ESTATE = "real_estate"
     METALS = "metals"
@@ -101,12 +96,12 @@ class Sector(str, Enum):
     OTHER = "other"
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     OWNER = "owner"
     INVITED_VIEWER = "invited_viewer"
 
 
-class InviteDeliveryState(str, Enum):
+class InviteDeliveryState(StrEnum):
     LINK_ONLY = "link_only"
     SENT = "sent"
     FAILED = "failed"
