@@ -105,7 +105,6 @@ Start from `.env.example`. Important groups include:
 - internal automation auth via `ECHO_INTERNAL_API_TOKEN`
 - SMTP settings for invite delivery
 - frontend/API URLs such as `ECHO_PUBLIC_APP_URL`
-- Caddy Basic Auth hash for the public n8n route via `N8N_BASIC_AUTH_HASH`
 
 For n8n automations, set both `ECHO_INTERNAL_API_TOKEN` and `ECHO_AUTOMATION_USER_ID`.
 The workflow templates live in `infra/n8n/`.
@@ -168,9 +167,9 @@ Production is split across a static frontend target and a VPS-hosted backend sta
 - `n8n.oskarwichtowski.com`
 - `mail.oskarwichtowski.com`
 
-On the VPS, only Caddy and the mail server publish host ports. Caddy handles `80` and `443`; the mail server handles `25`, `587`, `143`, and `993`. Postgres, Redis, RabbitMQ, MongoDB, n8n, the Core API, and workers stay private on Docker networks and are not exposed on the host.
+On the VPS, only the mail server publishes host ports for this Compose project. The global platform edge owns `80` and `443`; the mail server handles `25`, `587`, `143`, and `993`. Postgres, Redis, RabbitMQ, MongoDB, n8n, the Core API, and workers stay private on Docker networks and are not exposed on the host.
 
-The production Compose stack separates those networks so Caddy can reach only the app services it reverse-proxies, while databases and brokers remain on the internal `data_net`.
+The production Compose stack separates application services from the internal `data_net` used by databases and brokers.
 
 GitHub Actions:
 
@@ -178,11 +177,4 @@ GitHub Actions:
 - each merge to `main` creates the next patch tag in the `x.y.z` series
 - manual dispatch redeploys both backend and dashboard for a chosen version or the latest tag
 
-Before exposing the public n8n host, protect it with Caddy Basic Auth:
-
-```bash
-caddy hash-password
-```
-
-Add the generated hash to the GitHub Actions secret `N8N_BASIC_AUTH_HASH`, redeploy with `.github/workflows/deploy-release.yml`, and open the n8n route to confirm the browser asks for Basic Auth.
-Production n8n is protected by Caddy Basic Auth and can also keep its own n8n auth enabled for defense in depth.
+Production n8n is protected by the global platform edge and can keep its own n8n auth enabled for defense in depth.
