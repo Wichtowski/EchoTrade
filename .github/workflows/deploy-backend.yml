@@ -74,7 +74,7 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_SSH_PASSPHRASE }}
           script_stop: true
           envs: DEPLOY_PATH,DEPLOY_ARCHIVE
-          command_timeout: "5m"
+          command_timeout: "20m"
           script: |
             set -euo pipefail
 
