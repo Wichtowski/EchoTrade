@@ -41,11 +41,11 @@ jobs:
             cd "${DEPLOY_PATH}"
 
             if [ "${ACTION}" = "start" ]; then
-              docker compose --env-file .env -f docker-compose.prod.yml up -d echo-core echo-worker
+              docker compose --env-file .env -f docker-compose.prod.yml up -d echo-core
             elif [ "${ACTION}" = "stop" ]; then
-              docker compose --env-file .env -f docker-compose.prod.yml stop echo-core echo-worker
+              docker compose --env-file .env -f docker-compose.prod.yml stop echo-core
             elif [ "${ACTION}" = "restart" ]; then
-              docker compose --env-file .env -f docker-compose.prod.yml restart echo-core echo-worker
+              docker compose --env-file .env -f docker-compose.prod.yml restart echo-core
             else
               echo "Unknown action: ${ACTION}"
               exit 1

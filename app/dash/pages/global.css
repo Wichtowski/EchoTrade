@@ -15,6 +15,11 @@
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
 }
 
+.settings-fields { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
+.checkbox-label { display: flex; align-items: flex-start; gap: 0.65rem; margin: 1rem 0; }
+.checkbox-label input { width: auto; flex: 0 0 auto; margin-top: 0.3rem; }
+.research-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 * {
   box-sizing: border-box;
 }

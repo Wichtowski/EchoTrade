@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import json
+import os
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -27,7 +28,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 CNBC_CAPTURE_TIME_RANGES = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "5Y", "ALL"]
-ARTIFACTS_DIR = Path("app/lens/artifacts/playwright")
+ARTIFACTS_DIR = Path(os.environ.get("ECHO_LENS_ARTIFACTS_DIR", "app/lens/artifacts/playwright"))
 REALISTIC_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"

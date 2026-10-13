@@ -1,180 +1,69 @@
 # EchoTrade
 
-AI-powered portfolio assistant and controlled experimental trading lab.
+Portfolio intelligence and a guarded paper-trading lab.
 
-EchoTrade is built in layers: track the portfolio first, monitor it during market hours, generate daily and weekly intelligence, then add guarded paper trading and eventually tightly constrained live execution.
+## One application service
 
-## Architecture
+EchoCore runs the API, background jobs, scheduler, AI research, and browser captures in one Python process. PostgreSQL stores portfolios, paper accounts, job history, captures, and saved chart queries. Redis, RabbitMQ, MongoDB, n8n, and a separate Celery worker are no longer required. The dashboard remains on Cloudflare.
 
-```text
-EchoTrade
-├── app/
-│   ├── libshared/       - shared config, schemas, constants
-│   ├── libdb/           - SQLAlchemy models and database session
-│   ├── libworker/       - Celery app and shared worker tasks
-│   ├── core/            - FastAPI backend API
-│   ├── dash/            - Vike + React dashboard
-│   ├── pulse/           - daily portfolio and market summaries
-│   ├── signal/          - AI analyst and signal generation
-│   ├── guard/           - risk evaluator and policy guard
-│   ├── bot/             - execution-only trader bot
-│   ├── ledger/          - decision and trade journal
-│   ├── review/          - post-trade review engine
-│   ├── lens/            - browser research and chart capture
-│   └── wire/            - Discord notification layer
-├── infra/
-│   ├── n8n/             - workflow templates and orchestration notes
-│   ├── mailserver/      - docker-mailserver setup
-│   └── caddy/           - production reverse proxy config
-├── phases/              - roadmap phase definitions
-├── docker-compose.yml   - local development stack
-└── docker-compose.prod.yml
-```
+The default production stack contains only `echo-core` and `echo-postgres`. The mail server is optional (`--profile mail`); an existing SMTP service can handle invites instead. PostgreSQL may also be an existing VPS database via `ECHO_DATABASE_URL`.
 
-## Prerequisites
+Jobs run one at a time. PostgreSQL advisory locks elect one consumer, queued work survives restarts, and scheduled jobs are unique per user/period. Transient network failures retry at most three times. Research output is saved before delivery retries; paper fills and cash updates commit together.
 
-- `uv` for the Python workspace
-- `bun` for the dashboard
-- Docker Compose for local infrastructure
+## Development
 
-## Quick Start
+Requires uv, Bun, and Docker Compose.
 
 ```bash
-# 1. Create local env file
 cp .env.example .env
-
-# 2. Install all Python workspace members
-uv sync
-
-# 3. Install dashboard dependencies
-cd app/dash
-bun install
-cd ../..
-
-# 4. Start local infrastructure
-make up
-
-# 5. Start the backend API
-make run-core
-
-# 6. Start the Celery worker in a second terminal
-make worker
-
-# 7. Start the dashboard in a third terminal
-make dash
+uv sync --all-packages --extra dev
+cd app/dash && bun install
 ```
 
-The backend reads local configuration from `.env`. The dashboard reads its frontend env files from `app/dash/`.
+Start the database with `docker compose up -d echo-postgres`, then `make run-core` and `make dash` in separate terminals. `make backend-compose` runs the database and consolidated application in containers. There is no separate worker or Beat process.
 
-## Local Services
+Use `make test` for Python tests and `cd app/dash && bun run lint && bun run build` for the dashboard. Database integration tests require an explicitly supplied isolated `ECHO_TEST_DATABASE_URL`; they create and remove their own schemas.
 
-| Service | URL / Port | Notes |
-|---------|------------|-------|
-| Core API | http://localhost:8000 | FastAPI docs at `/docs` |
-| Dashboard | http://localhost:3000 | Vike dev server |
-| n8n | http://localhost:5678 | user: `echo`, pass: `echo` |
-| Postgres | localhost:5432 | db: `echotrade`, user: `echo`, pass: `echo` |
-| RabbitMQ | localhost:5672 | management UI at http://localhost:15672 |
-| Redis | localhost:6379 | cache and task support |
-| MongoDB | localhost:27017 | browser capture and saved query storage |
-| Mail | localhost:25 / 587 / 143 / 993 | docker-mailserver for invite delivery |
+## Models and automation
 
-## Common Commands
+Configure `ECHO_OPENAI_API_KEY` on the server. In **AI & Automation**, owners select separate commentary/proposal models and reasoning effort. Supported choices are `gpt-6-luna` (default), `gpt-6.1-sol`, and `gpt-6-astra`. Preferences are persisted per user and used by both manual requests and scheduled jobs. The browser never receives the API key. Higher model/effort selections and web searches incur provider usage charges.
+
+Automation starts disabled. Enabling it schedules:
+
+- Hourly quote refresh and risk monitoring during US exchange sessions.
+- Daily portfolio snapshot and sourced commentary 15 minutes after exchange close.
+- Sunday weekly review after 18:00 Europe/Warsaw.
+- Monday/Wednesday/Friday opportunity scans after the first trading hour.
+
+The exchange calendar handles holidays, early closes, and DST. Monitoring currently follows US sessions; holdings on other exchanges need per-exchange schedules in a future change. Notifications use the existing Discord webhook settings. Identical consecutive hourly warnings are suppressed. A crash after Discord accepts a message but before the delivery commit may still duplicate that message.
+
+Scheduled scans generate proposals only when their separate preference is enabled and the paper account is active. AI refusals, errors, and no-trade decisions remain visible in job history. AI does not execute trades.
+
+## Paper account
+
+Each user has an isolated USD paper account, initially paused, with starting cash configured by `ECHO_PAPER_INITIAL_CASH` (default USD 300). Activate it in **Paper trading**, create a sourced manual or AI proposal, evaluate risk, approve, then execute a simulated fill.
+
+Only experimental USD market orders are supported. Quotes must come from a supported market-data provider, match the account currency, and be recent. Missing/stale valuations, insufficient cash or holdings, daily/monthly loss limits, exposure limits, budgets, cooldowns, and paused/closed-market execution reject the trade. USD risk budgets and trade limits come from the existing `ECHO_MAX_*` settings.
+
+Risk evaluation never grants manual approval. Execution rechecks all constraints under a user lock. Retrying an already filled proposal returns the existing fill; a database uniqueness constraint also prevents duplicates. Cash, holdings, and realized/unrealized P/L derive from the paper ledger. Personal holdings are unchanged.
+
+Fills support fractional quantities, use the stored quote, and assume zero fees; spreads/slippage and real broker execution are outside this simulator. Legacy simulated fills remain stored but are excluded from the new funded account because they had no cash ledger.
+
+## Production transition
+
+Before upgrading, disable the legacy n8n workflows, stop the old Core and Celery worker to prevent new captures, back up PostgreSQL and MongoDB, and copy the legacy captures and saved chart queries. Keep MongoDB and PostgreSQL running for the import. The importer is repeatable, preserves identifiers, and never deletes MongoDB data:
 
 ```bash
-make help            # show all top-level targets
-make sync            # install Python workspace members
-make up              # start Postgres, RabbitMQ, Redis, MongoDB, n8n, mail
-make down            # stop local infrastructure
-make run-core        # start FastAPI app with reload
-make worker          # start Celery worker
-make beat            # start Celery beat scheduler
-make dash            # start dashboard dev server
-make backend-compose # build and run the backend stack with Docker Compose
-make lint            # lint all Python modules
-make test            # run tests for all Python modules
+uv sync --all-packages --extra migration
+# ECHO_DATABASE_URL targets the existing EchoTrade database;
+# ECHO_MONGODB_URL targets the legacy MongoDB instance.
+uv run --package core --extra migration python -m core.import_mongo
 ```
 
-## Environment
+If uv is unavailable on the VPS, build the new Core image from the selected release in the existing project directory and run `docker compose --env-file .env -f docker-compose.prod.yml run --rm --no-deps --entrypoint /opt/venv/bin/python echo-core -m core.import_mongo` while the legacy MongoDB/PostgreSQL containers remain running on the existing networks. Keep a copy of the old Compose file to stop its services after the import.
 
-Start from `.env.example`. Important groups include:
+Then stop the old stack with its original Compose file and start the new `docker-compose.prod.yml`. No volume deletion is required. Existing legacy volumes remain declared in the production file so operators can recover them. The application uses PostgreSQL immediately after the upgrade, so import the legacy documents before stopping MongoDB. The release deployment refuses to proceed until the legacy MongoDB import marker is present when a legacy MongoDB container exists.
 
-- database and queue settings for Postgres, RabbitMQ, Redis, and MongoDB
-- market data and LLM provider keys
-- Discord webhook targets
-- internal automation auth via `ECHO_INTERNAL_API_TOKEN`
-- SMTP settings for invite delivery
-- frontend/API URLs such as `ECHO_PUBLIC_APP_URL`
+Keep one Uvicorn worker for the smallest memory footprint. `echo-core` has a 768 MB cap and one CPU; PostgreSQL has a 256 MB cap with 64 MB shared buffers. These are configured limits, not measured production usage. Chromium starts only for requested captures and shares the single background slot. Existing production capacity and SMTP delivery must be verified on the VPS.
 
-For n8n automations, set both `ECHO_INTERNAL_API_TOKEN` and `ECHO_AUTOMATION_USER_ID`.
-The workflow templates live in `infra/n8n/`.
-
-## Operating Rhythm
-
-EchoTrade is being built around a recurring portfolio loop before any serious live automation:
-
-1. Hourly during market hours: check held positions, price moves, concentration, and thesis-breaking alerts.
-2. Daily after market close: generate a portfolio report with value, P/L, allocation, risks, and commentary.
-3. Weekly: run a deeper evaluation of portfolio results, decisions, and changing risk.
-4. Three times per week: scan for new investment candidates with reasons and risks.
-
-This keeps the roadmap focused on portfolio intelligence first, then paper trading, and only later live execution.
-
-## Time Horizons
-
-| Horizon | Range | Description |
-|---------|-------|-------------|
-| Intraday | < 1 day | Same-session open/close. Forbidden for the experimental account. |
-| Short-term | 1-5 days | Swing trade, up to one trading week. |
-| Medium-term | 1-8 weeks | Typical experimental trade range. |
-| Long-term | 2-6 months | Multi-month thesis with quarterly review. |
-| Strategic | > 6 months | Core conviction with semi-annual review. |
-
-## Phases
-
-| Phase | Name | Description |
-|-------|------|-------------|
-| 1 | Portfolio Tracker | Positions CRUD, prices, P/L, allocation, snapshots, trade journal |
-| 2 | Portfolio Monitoring | Hourly position checks during market hours and alerting |
-| 3 | Daily Reporting | Daily portfolio report via EchoPulse and EchoWire |
-| 4 | Weekly Evaluation and Opportunity Scans | Weekly reviews plus Monday/Wednesday/Friday candidate scans |
-| 5 | Paper Trader | Simulated trading with EchoGuard and EchoBot |
-| 6 | Manual Approval Live Trading | Approval flow plus real broker |
-| 7 | Limited Autonomous Trading | Auto-execution within strict risk limits |
-
-## Safety
-
-EchoTrade prioritizes transparency, auditability, and strict risk control.
-
-The execution flow is always:
-
-```text
-EchoSignal -> Trade Proposal -> EchoGuard -> EchoBot -> Broker API
-```
-
-Never:
-
-```text
-LLM -> Broker API
-```
-
-## Deployment
-
-Production is split across a static frontend target and a VPS-hosted backend stack:
-
-- `echotrade.oskarwichtowski.com`
-- `apiechotrade.oskarwichtowski.com`
-- `n8n.oskarwichtowski.com`
-- `mail.oskarwichtowski.com`
-
-On the VPS, only the mail server publishes host ports for this Compose project. The global platform edge owns `80` and `443`; the mail server handles `25`, `587`, `143`, and `993`. Postgres, Redis, RabbitMQ, MongoDB, n8n, the Core API, and workers stay private on Docker networks and are not exposed on the host.
-
-The production Compose stack separates application services from the internal `data_net` used by databases and brokers.
-
-GitHub Actions:
-
-- `.github/workflows/deploy-release.yml` deploys a release tag to the VPS backend stack and Cloudflare Pages dashboard
-- each merge to `main` creates the next patch tag in the `x.y.z` series
-- manual dispatch redeploys both backend and dashboard for a chosen version or the latest tag
-
-Production n8n is protected by the global platform edge and can keep its own n8n auth enabled for defense in depth.
+The public API hostname and existing edge routing remain unchanged. Backend start/stop/restart actions now target only `echo-core`. No live broker execution is enabled.

@@ -31,7 +31,6 @@ packages = ["src/echo_trade"]
 members = [
     "app/libshared",
     "app/libdb",
-    "app/libworker",
     "app/core",
     "app/pulse",
     "app/signal",
@@ -46,7 +45,6 @@ members = [
 [tool.uv.sources]
 libshared  = { workspace = true }
 libdb      = { workspace = true }
-libworker  = { workspace = true }
 core       = { workspace = true }
 pulse      = { workspace = true }
 signal     = { workspace = true }
@@ -75,3 +73,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"

@@ -9,10 +9,7 @@ class Settings(BaseSettings):
     # --- database ---
     database_url: str = "postgresql+asyncpg://echo:echo@localhost:5432/echotrade"
 
-    # --- celery ---
-    celery_broker_url: str = "amqp://echo:echo@localhost:5672//"
-    celery_result_backend: str = "db+postgresql://echo:echo@localhost:5432/echotrade"
-    redis_url: str = "redis://localhost:6379/0"
+    # --- optional legacy data import ---
     mongodb_url: str = "mongodb://localhost:27017"
     mongodb_database: str = "echotrade"
     mongodb_chart_collection: str = "browser_chart_payloads"
@@ -41,6 +38,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    ai_max_output_tokens: int = 4000
+    background_jobs_enabled: bool = True
 
     # --- frontend / api ---
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -71,6 +70,10 @@ class Settings(BaseSettings):
     max_monthly_loss_pct: float = 15.0
     cooldown_after_trade_hours: int = 24
     cooldown_after_loss_hours: int = 72
+    paper_initial_cash: float = 300.0
+    paper_quote_max_age_seconds: int = 1800
+    max_ticker_exposure_pct: float = 50.0
+    max_sector_exposure_pct: float = 60.0
 
     model_config = {"env_prefix": "ECHO_", "env_file": ".env", "extra": "ignore"}
 

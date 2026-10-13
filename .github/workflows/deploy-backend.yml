@@ -83,6 +83,12 @@ jobs:
 
             # Stop existing containers if running, to free up any active bind mounts
             if [ -f docker-compose.prod.yml ] && [ -f .env ]; then
+              if docker compose --env-file .env -f docker-compose.prod.yml config --services | grep -qx 'echo-mongo'; then
+                if ! docker compose --env-file .env -f docker-compose.prod.yml exec -T echo-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT name FROM data_migrations WHERE name = '\''legacy_mongo'\''"' | grep -qx 'legacy_mongo'; then
+                  echo "Legacy MongoDB migration is required. Stop old Core/worker, import captures and saved queries, then retry deployment."
+                  exit 1
+                fi
+              fi
               docker compose --env-file .env -f docker-compose.prod.yml down || true
             fi
 
@@ -104,5 +110,9 @@ jobs:
             printf '%s\n' "${{ secrets.DOCKER_MAILSERVER_ENV }}" > "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
             chmod 600 "${DEPLOY_PATH}/infra/mailserver/docker-mailserver.env"
 
-            docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+            mail_profile=()
+            if grep -Eq "^ECHO_SMTP_HOST=[\"']?echo-mail[\"']?$" .env; then
+              mail_profile=(--profile mail)
+            fi
+            docker compose --env-file .env -f docker-compose.prod.yml "${mail_profile[@]}" up -d --build
             docker compose --env-file .env -f docker-compose.prod.yml ps

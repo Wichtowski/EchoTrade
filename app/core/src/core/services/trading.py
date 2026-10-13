@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 from uuid import UUID
 
@@ -36,6 +36,16 @@ from libshared.schemas import (
 )
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.services.paper import (
+    account_state,
+    execution_failures,
+    load_account,
+    money,
+    replay_fills,
+    update_loss_baselines,
+    utc,
+)
 
 
 def _as_float(value: Decimal | float | int | None) -> float:
@@ -84,6 +94,7 @@ def serialize_trade_proposal(proposal: TradeProposal) -> TradeProposalOut:
         risks=proposal.risks,
         invalidated_if=proposal.invalidated_if,
         expected_holding_period=proposal.expected_holding_period,
+        time_horizon=proposal.time_horizon or "medium_term",
         review_date=proposal.review_date,
         confidence=None if proposal.confidence is None else _as_float(proposal.confidence),
         used_browser_context=proposal.used_browser_context,
@@ -116,7 +127,9 @@ def serialize_risk_check(risk_check: RiskCheck) -> RiskCheckOut:
             else _as_float(risk_check.monthly_budget_remaining)
         ),
         daily_loss=None if risk_check.daily_loss is None else _as_float(risk_check.daily_loss),
-        monthly_loss=None if risk_check.monthly_loss is None else _as_float(risk_check.monthly_loss),
+        monthly_loss=None
+        if risk_check.monthly_loss is None
+        else _as_float(risk_check.monthly_loss),
         evaluator_summary=risk_check.evaluator_summary,
     )
 
@@ -148,6 +161,7 @@ async def get_or_create_budget(
         select(TradingBudget).where(
             TradingBudget.user_id == user_id,
             TradingBudget.account_type == account_type.value,
+            TradingBudget.paper_account_id == user_id,
             TradingBudget.month == month,
         )
     )
@@ -157,6 +171,7 @@ async def get_or_create_budget(
 
     budget = TradingBudget(
         user_id=user_id,
+        paper_account_id=user_id,
         account_type=account_type.value,
         month=month,
         starting_budget=settings.max_monthly_budget,
@@ -176,7 +191,17 @@ async def create_trade_proposal(
     data: TradeProposalCreate,
     *,
     user_id: UUID,
+    commit: bool = True,
 ) -> TradeProposal:
+    await load_account(session, user_id)
+    if (
+        data.account_type != AccountType.EXPERIMENTAL
+        or data.currency != Currency.USD
+        or data.order_type != OrderType.MARKET
+    ):
+        raise HTTPException(
+            status_code=422, detail="Paper proposals support experimental USD market orders only"
+        )
     proposal = TradeProposal(
         user_id=user_id,
         account_type=data.account_type.value,
@@ -191,7 +216,8 @@ async def create_trade_proposal(
         risks=data.risks,
         invalidated_if=data.invalidated_if,
         expected_holding_period=data.expected_holding_period,
-        review_date=data.review_date,
+        time_horizon=data.time_horizon.value,
+        review_date=utc(data.review_date).replace(tzinfo=None) if data.review_date else None,
         confidence=data.confidence,
         used_browser_context=data.used_browser_context,
         sources=_serialize_sources(data.sources),
@@ -210,13 +236,18 @@ async def create_trade_proposal(
         final_decision="proposal_created",
     )
     session.add_all([proposal, decision])
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     await session.refresh(proposal)
     return proposal
 
 
-async def get_owned_proposal(session: AsyncSession, proposal_id: UUID, *, user_id: UUID) -> TradeProposal:
-    proposal = await session.get(TradeProposal, proposal_id)
+async def get_owned_proposal(
+    session: AsyncSession, proposal_id: UUID, *, user_id: UUID
+) -> TradeProposal:
+    proposal = await session.get(TradeProposal, proposal_id, populate_existing=True)
     if proposal is None or proposal.user_id != user_id:
         raise HTTPException(status_code=404, detail="Trade proposal not found")
     return proposal
@@ -236,6 +267,7 @@ def _proposal_to_create(proposal: TradeProposal) -> TradeProposalCreate:
         risks=list(proposal.risks or []),
         invalidated_if=proposal.invalidated_if,
         expected_holding_period=proposal.expected_holding_period,
+        time_horizon=proposal.time_horizon or "medium_term",
         review_date=proposal.review_date,
         confidence=None if proposal.confidence is None else _as_float(proposal.confidence),
         used_browser_context=proposal.used_browser_context,
@@ -243,34 +275,57 @@ def _proposal_to_create(proposal: TradeProposal) -> TradeProposalCreate:
     )
 
 
+async def check_paper_proposal(session: AsyncSession, proposal: TradeProposal, *, user_id: UUID):
+    account = await load_account(session, user_id)
+    state = await account_state(session, account)
+    now = datetime.now(UTC)
+    if state.equity is not None:
+        update_loss_baselines(account, state.equity, now)
+    budget = await get_or_create_budget(session, user_id=user_id)
+    remaining = _as_float(budget.starting_budget) - _as_float(budget.used_budget)
+    result = evaluate_hard_rules(
+        _proposal_to_create(proposal),
+        monthly_budget_remaining=remaining if proposal.action == "BUY" else None,
+    )
+    quote = await _latest_quote(session, proposal.ticker)
+    trades = list(
+        (
+            await session.scalars(
+                select(ExecutedTrade)
+                .where(ExecutedTrade.paper_account_id == user_id)
+                .order_by(ExecutedTrade.paper_sequence)
+            )
+        ).all()
+    )
+    result.failed_rules = sorted(
+        set(result.failed_rules + execution_failures(account, state, proposal, quote, trades, now))
+    )
+    result.approved = not result.failed_rules
+    result.requires_manual_review = True
+    result.summary = (
+        "Risk checks passed; manual approval required"
+        if result.approved
+        else "Rejected: " + ", ".join(result.failed_rules)
+    )
+    result.monthly_budget_remaining = remaining
+    return account, budget, quote, trades, result
+
+
 async def evaluate_trade_proposal(
-    session: AsyncSession,
-    proposal_id: UUID,
-    *,
-    user_id: UUID,
+    session: AsyncSession, proposal_id: UUID, *, user_id: UUID
 ) -> RiskCheck:
+    await load_account(session, user_id)
     proposal = await get_owned_proposal(session, proposal_id, user_id=user_id)
     if proposal.status == ProposalStatus.EXECUTED.value:
         raise HTTPException(status_code=409, detail="Executed proposals cannot be re-evaluated")
-
-    budget = await get_or_create_budget(
-        session,
-        user_id=user_id,
-        account_type=AccountType(proposal.account_type),
-    )
-    remaining_budget = _as_float(budget.starting_budget) - _as_float(budget.used_budget)
-    result = evaluate_hard_rules(
-        _proposal_to_create(proposal),
-        monthly_budget_remaining=remaining_budget,
-    )
+    *_, result = await check_paper_proposal(session, proposal, user_id=user_id)
     risk_check = _store_risk_check(result, proposal, user_id=user_id)
     proposal.status = (
-        ProposalStatus.APPROVED.value if result.approved else ProposalStatus.REJECTED.value
+        ProposalStatus.PENDING.value if result.approved else ProposalStatus.REJECTED.value
     )
     session.add(risk_check)
     await session.commit()
     await session.refresh(risk_check)
-    await session.refresh(proposal)
     return risk_check
 
 
@@ -301,12 +356,14 @@ async def approve_trade_proposal(
     *,
     user_id: UUID,
 ) -> TradeProposal:
+    await load_account(session, user_id)
     proposal = await get_owned_proposal(session, proposal_id, user_id=user_id)
-    if proposal.status == ProposalStatus.EXECUTED.value:
-        raise HTTPException(status_code=409, detail="Executed proposals cannot be approved")
-    risk_check = await _latest_risk_check(session, proposal.id, user_id=user_id)
-    if risk_check is None or not risk_check.passed:
-        raise HTTPException(status_code=409, detail="A passing risk check is required before approval")
+    if proposal.status not in {ProposalStatus.PENDING.value, ProposalStatus.APPROVED.value}:
+        raise HTTPException(status_code=409, detail="Only pending proposals can be approved")
+    *_, result = await check_paper_proposal(session, proposal, user_id=user_id)
+    if not result.approved:
+        raise HTTPException(status_code=409, detail=result.summary)
+    session.add(_store_risk_check(result, proposal, user_id=user_id))
     proposal.status = ProposalStatus.APPROVED.value
     await session.commit()
     await session.refresh(proposal)
@@ -320,6 +377,7 @@ async def reject_trade_proposal(
     user_id: UUID,
     reason: str | None = None,
 ) -> TradeProposal:
+    await load_account(session, user_id)
     proposal = await get_owned_proposal(session, proposal_id, user_id=user_id)
     if proposal.status == ProposalStatus.EXECUTED.value:
         raise HTTPException(status_code=409, detail="Executed proposals cannot be rejected")
@@ -349,45 +407,60 @@ async def execute_approved_paper_trade(
     *,
     user_id: UUID,
 ) -> ExecutedTrade:
+    await load_account(session, user_id)
     proposal = await get_owned_proposal(session, proposal_id, user_id=user_id)
-    if proposal.status != ProposalStatus.APPROVED.value:
-        raise HTTPException(status_code=409, detail="Only approved proposals can be paper executed")
-
-    quote = await _latest_quote(session, proposal.ticker)
-    if quote is None:
-        raise HTTPException(status_code=409, detail="A stored quote is required for paper execution")
-
-    budget = await get_or_create_budget(
-        session,
-        user_id=user_id,
-        account_type=AccountType(proposal.account_type),
+    existing = await session.scalar(
+        select(ExecutedTrade).where(
+            ExecutedTrade.proposal_id == proposal.id, ExecutedTrade.paper_account_id == user_id
+        )
     )
-    remaining_budget = _as_float(budget.starting_budget) - _as_float(budget.used_budget)
-    proposal_amount = _as_float(proposal.amount)
-    if proposal_amount > remaining_budget:
-        raise HTTPException(status_code=409, detail="Monthly paper budget is exhausted")
-
-    price = _as_float(quote.price)
-    if price <= 0:
-        raise HTTPException(status_code=409, detail="Latest quote price must be positive")
-
+    if existing is not None:
+        return existing
+    if proposal.status != ProposalStatus.APPROVED.value:
+        raise HTTPException(
+            status_code=409, detail="Only manually approved proposals can be executed"
+        )
+    account, budget, quote, trades, result = await check_paper_proposal(
+        session, proposal, user_id=user_id
+    )
+    if not result.approved:
+        raise HTTPException(status_code=409, detail=result.summary)
+    price = money(quote.price)
+    quantity = (money(proposal.amount) / price).quantize(
+        Decimal("0.000000000001"), rounding=ROUND_DOWN
+    )
+    if quantity <= 0:
+        raise HTTPException(status_code=409, detail="Trade amount is below the minimum quantity")
+    notional = quantity * price
+    if proposal.action == "SELL":
+        holdings, _ = replay_fills(trades)
+        holding = holdings.get(proposal.ticker)
+        if holding is None or quantity > holding["quantity"]:
+            raise HTTPException(status_code=409, detail="Insufficient paper holdings")
+        cost = holding["cost"] * quantity / holding["quantity"]
+        account.cash = money(account.cash) + notional
+        if notional < cost:
+            account.last_loss_at = datetime.now(UTC).replace(tzinfo=None)
+    else:
+        account.cash = money(account.cash) - notional
+        budget.used_budget = money(budget.used_budget) + notional
     executed_trade = ExecutedTrade(
         user_id=user_id,
+        paper_account_id=user_id,
+        paper_sequence=len(trades) + 1,
         proposal_id=proposal.id,
         broker_order_id=None,
         ticker=proposal.ticker,
         action=proposal.action,
-        quantity=proposal_amount / price,
+        quantity=quantity,
         price=price,
         fees=0,
-        currency=quote.currency,
+        currency=account.currency,
         status="paper_filled",
+        executed_at=datetime.now(UTC).replace(tzinfo=None),
     )
     proposal.status = ProposalStatus.EXECUTED.value
-    budget.used_budget = _as_float(budget.used_budget) + proposal_amount
-    if _as_float(budget.used_budget) >= _as_float(budget.starting_budget):
-        budget.status = TradingStatus.BUDGET_EXHAUSTED.value
-
+    session.add(_store_risk_check(result, proposal, user_id=user_id))
     session.add(executed_trade)
     await session.flush()
     if proposal.review_date is not None:
@@ -447,33 +520,47 @@ async def build_trader_status(
     *,
     user_id: UUID,
 ) -> PaperTradingStatusOut:
+    account = await load_account(session, user_id)
     budget = await get_or_create_budget(session, user_id=user_id)
+    trades = list(
+        (
+            await session.scalars(
+                select(ExecutedTrade)
+                .where(ExecutedTrade.paper_account_id == user_id)
+                .order_by(ExecutedTrade.paper_sequence)
+            )
+        ).all()
+    )
     pending_count = await _count_proposals(session, user_id, ProposalStatus.PENDING)
     approved_count = await _count_proposals(session, user_id, ProposalStatus.APPROVED)
-    executed_count_result = await session.execute(
-        select(func.count(ExecutedTrade.id)).where(ExecutedTrade.user_id == user_id)
-    )
-    executed_count = int(executed_count_result.scalar_one() or 0)
-    last_trade_result = await session.execute(
-        select(ExecutedTrade)
-        .where(ExecutedTrade.user_id == user_id)
-        .order_by(ExecutedTrade.executed_at.desc())
-        .limit(1)
-    )
-    last_trade = last_trade_result.scalar_one_or_none()
-    used_budget = _as_float(budget.used_budget)
-    max_budget = _as_float(budget.starting_budget)
-    return PaperTradingStatusOut(
-        status=TradingStatus(budget.status),
-        monthly_budget_remaining=max(max_budget - used_budget, 0.0),
-        monthly_budget_used=used_budget,
-        max_monthly_budget=max_budget,
-        daily_trades_remaining=settings.max_daily_trades,
+    now = datetime.now(UTC)
+    today_count = sum(utc(t.executed_at).date() == now.date() for t in trades)
+    cooldowns = []
+    if trades:
+        cooldowns.append(
+            utc(trades[-1].executed_at) + timedelta(hours=settings.cooldown_after_trade_hours)
+        )
+    if account.last_loss_at:
+        cooldowns.append(
+            utc(account.last_loss_at) + timedelta(hours=settings.cooldown_after_loss_hours)
+        )
+    cooldown = max(cooldowns) if cooldowns else None
+    output = PaperTradingStatusOut(
+        status=TradingStatus(account.status),
+        monthly_budget_remaining=max(
+            _as_float(budget.starting_budget) - _as_float(budget.used_budget), 0
+        ),
+        monthly_budget_used=_as_float(budget.used_budget),
+        max_monthly_budget=_as_float(budget.starting_budget),
+        daily_trades_remaining=max(settings.max_daily_trades - today_count, 0),
         pending_proposals=pending_count,
         approved_proposals=approved_count,
-        executed_trades=executed_count,
-        last_trade_at=None if last_trade is None else last_trade.executed_at,
+        executed_trades=len(trades),
+        last_trade_at=trades[-1].executed_at if trades else None,
+        cooldown_until=cooldown if cooldown and cooldown > now else None,
     )
+    await session.commit()
+    return output
 
 
 async def _count_proposals(

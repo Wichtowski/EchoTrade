@@ -3,14 +3,13 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
-    PATH=/opt/venv/bin:/root/.local/bin:$PATH
+    PATH=/opt/venv/bin:/root/.local/bin:$PATH \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    ECHO_LENS_ARTIFACTS_DIR=/tmp/echotrade-lens \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1
 
 WORKDIR /workspace
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir uv
 
@@ -19,6 +18,7 @@ COPY app ./app
 COPY make ./make
 COPY README.md ./
 
-RUN uv sync --all-packages --extra dev
+RUN uv sync --locked --package core --extra migration
+RUN /opt/venv/bin/playwright install --with-deps --only-shell chromium && rm -rf /var/lib/apt/lists/*
 
-CMD ["uv", "run", "uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["/opt/venv/bin/uvicorn", "core.app:app", "--host", "0.0.0.0", "--port", "8000"]
