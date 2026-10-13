@@ -88,8 +88,8 @@ def test_rank_opportunity_candidates_prefers_plan_targets_with_data() -> None:
             "CRM": {"weight_pct": 12.5, "sector": "software", "currency": "USD"}
         },
         quote_payloads={
-            "AMD": {"price": 150.0, "currency": "USD", "source": "yahoo"},
-            "CRM": {"price": 280.0, "currency": "USD", "source": "yahoo"},
+            "AMD": {"price": 150.0, "currency": "USD", "source": "yahoo", "fresh": True},
+            "CRM": {"price": 280.0, "currency": "USD", "source": "yahoo", "fresh": True},
         },
         chart_payloads={
             "AMD": {"latest_close": 149.0, "document_id": "1"},

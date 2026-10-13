@@ -382,6 +382,62 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export type AISettings = {
+  commentary_model: string;
+  proposal_model: string;
+  reasoning_effort: "low" | "medium" | "high";
+  automation_enabled: boolean;
+  proposals_enabled: boolean;
+  api_key_configured: boolean;
+  available_models: string[];
+};
+
+export type AutomationRun = {
+  id: string;
+  kind: string;
+  period: string;
+  status: string;
+  payload: { warnings?: string[]; commentary?: string; reason?: string; model?: string; proposal_id?: string; sources?: Array<{ title: string; url: string }> } | null;
+  error: string | null;
+  created_at: string;
+};
+
+export type PaperTrade = { id: string; ticker: string; action: "BUY" | "SELL"; quantity: number; price: number; executed_at: string };
+export type PaperAccount = {
+  currency: string;
+  initial_cash: number;
+  cash: number;
+  equity: number | null;
+  realized_pnl: number;
+  unrealized_pnl: number | null;
+  status: "active" | "paused";
+  positions: Array<{ ticker: string; quantity: number; average_price: number; current_price: number | null; market_value: number | null; unrealized_pnl: number | null; quote_fresh: boolean }>;
+  trades: PaperTrade[];
+  warnings: string[];
+};
+
+export type TradeProposal = {
+  id: string; ticker: string; action: "BUY" | "SELL"; amount: number; currency: string;
+  status: string; reason: string; thesis: string | null; risks: string[] | null;
+  invalidated_if: string | null; review_date: string | null;
+  sources: Array<{ title: string; url: string }> | null;
+};
+
+export function getAISettings() { return request<AISettings>("/ai/settings"); }
+export function saveAISettings(value: AISettings) {
+  const { commentary_model, proposal_model, reasoning_effort, automation_enabled, proposals_enabled } = value;
+  return request<AISettings>("/ai/settings", { method: "PUT", body: JSON.stringify({ commentary_model, proposal_model, reasoning_effort, automation_enabled, proposals_enabled }) });
+}
+export function getAutomationRuns() { return request<AutomationRun[]>("/automation/runs"); }
+export function queueResearch(kind: "commentary" | "proposal") { return request<AutomationRun>(`/ai/${kind}`, { method: "POST" }); }
+export function getPaperAccount() { return request<PaperAccount>("/paper/account"); }
+export function setPaperStatus(status: "active" | "paused") { return request<PaperAccount>("/paper/account", { method: "PATCH", body: JSON.stringify({ status }) }); }
+export function getTradeProposals() { return request<TradeProposal[]>("/trade-proposals"); }
+export function createTradeProposal(value: Record<string, unknown>) { return request<TradeProposal>("/trade-proposals", { method: "POST", body: JSON.stringify(value) }); }
+export function evaluateTradeProposal(id: string) { return request<{ passed: boolean; failed_rules: string[]; evaluator_summary: string }>("/risk/evaluate", { method: "POST", body: JSON.stringify({ proposal_id: id }) }); }
+export function decideTradeProposal(id: string, decision: "approve" | "reject") { return request<TradeProposal>(`/trade-proposals/${id}/${decision}`, { method: "POST", body: JSON.stringify({}) }); }
+export function executePaperTrade(id: string) { return request<PaperTrade>("/trader/execute-approved", { method: "POST", body: JSON.stringify({ proposal_id: id }) }); }
+
 export function getPositions(): Promise<Position[]> {
   return request<Position[]>("/positions");
 }

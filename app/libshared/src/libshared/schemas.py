@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -537,19 +537,20 @@ class TradeProposalSource(BaseModel):
 
 class TradeProposalCreate(BaseModel):
     account_type: AccountType = AccountType.EXPERIMENTAL
-    ticker: str
+    ticker: str = Field(min_length=1, max_length=20, pattern=r"^[A-Za-z0-9.^-]+$")
     action: TradeAction
-    amount: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
     currency: Currency = Currency.PLN
     order_type: OrderType = OrderType.MARKET
-    limit_price: float | None = None
+    limit_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     reason: str
     thesis: str | None = None
     risks: list[str] | None = None
     invalidated_if: str | None = None
     expected_holding_period: str | None = None
+    time_horizon: TimeHorizon = TimeHorizon.MEDIUM_TERM
     review_date: datetime | None = None
-    confidence: float | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     used_browser_context: bool = False
     sources: list[TradeProposalSource] | None = None
 
@@ -569,6 +570,7 @@ class TradeProposalOut(BaseModel):
     risks: Any | None
     invalidated_if: str | None
     expected_holding_period: str | None
+    time_horizon: TimeHorizon = TimeHorizon.MEDIUM_TERM
     review_date: datetime | None
     confidence: float | None
     used_browser_context: bool
@@ -647,6 +649,73 @@ class PaperTradingStatusOut(BaseModel):
     executed_trades: int
     cooldown_until: datetime | None = None
     last_trade_at: datetime | None = None
+
+
+GPTModel = Literal["gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"]
+
+
+class AISettingsUpdate(BaseModel):
+    commentary_model: GPTModel = "gpt-6-luna"
+    proposal_model: GPTModel = "gpt-6-luna"
+    reasoning_effort: Literal["low", "medium", "high"] = "low"
+    automation_enabled: bool = False
+    proposals_enabled: bool = False
+
+
+class AISettingsOut(AISettingsUpdate):
+    api_key_configured: bool
+    available_models: list[str]
+
+
+class CommentaryResult(BaseModel):
+    commentary: str = Field(min_length=1, max_length=8000)
+    risks: list[str] = Field(max_length=20)
+    watchlist: list[str] = Field(max_length=20)
+
+
+class AIProposalResult(BaseModel):
+    proposal: TradeProposalCreate | None
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class PaperAccountUpdate(BaseModel):
+    status: Literal["active", "paused"]
+
+
+class PaperPositionOut(BaseModel):
+    ticker: str
+    quantity: float
+    average_price: float
+    current_price: float | None
+    market_value: float | None
+    unrealized_pnl: float | None
+    quote_fresh: bool
+
+
+class PaperAccountOut(BaseModel):
+    currency: str
+    initial_cash: float
+    cash: float
+    equity: float | None
+    realized_pnl: float
+    unrealized_pnl: float | None
+    status: str
+    positions: list[PaperPositionOut]
+    trades: list[ExecutedTradeOut]
+    warnings: list[str]
+
+
+class AutomationRunOut(BaseModel):
+    id: UUID
+    kind: str
+    period: str
+    status: str
+    payload: dict[str, Any] | None
+    error: str | None
+    notification_sent: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class LensObservation(BaseModel):

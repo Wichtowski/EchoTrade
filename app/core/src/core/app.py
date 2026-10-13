@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from core.routers import (
     auth,
+    automation,
     investment_plans,
     market,
     portfolio,
@@ -41,14 +43,21 @@ async def run_startup_repairs() -> None:
         "ALTER TABLE opportunity_scans ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE trading_budgets ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE trading_budgets ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'experimental'",
+        "ALTER TABLE trading_budgets ADD COLUMN IF NOT EXISTS paper_account_id UUID REFERENCES paper_accounts(user_id)",
         "ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS account_type TEXT NOT NULL DEFAULT 'experimental'",
         "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS sources JSONB",
+        "ALTER TABLE trade_proposals ADD COLUMN IF NOT EXISTS time_horizon TEXT NOT NULL DEFAULT 'medium_term'",
         "ALTER TABLE risk_checks ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE executed_trades ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE post_trade_reviews ADD COLUMN IF NOT EXISTS user_id UUID",
         "ALTER TABLE risk_rules ADD COLUMN IF NOT EXISTS user_id UUID",
+        "ALTER TABLE executed_trades ADD COLUMN IF NOT EXISTS paper_account_id UUID REFERENCES paper_accounts(user_id)",
+        "ALTER TABLE executed_trades ADD COLUMN IF NOT EXISTS paper_sequence INTEGER",
+        "CREATE UNIQUE INDEX IF NOT EXISTS paper_fill_proposal_unique ON executed_trades(proposal_id) WHERE paper_account_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS paper_fill_sequence_unique ON executed_trades(paper_account_id, paper_sequence) WHERE paper_account_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS automation_run_period_unique ON automation_runs(user_id, kind, period)",
     ]
     async with engine.begin() as connection:
         for statement in statements:
@@ -60,7 +69,16 @@ async def lifespan(_: FastAPI):
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     await run_startup_repairs()
-    yield
+    from core.services.jobs import background_loop
+
+    task = asyncio.create_task(background_loop()) if settings.background_jobs_enabled else None
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(
@@ -95,6 +113,7 @@ app.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"], de
 app.include_router(market.router, prefix="/market", tags=["market"], dependencies=protected_dependencies)
 app.include_router(reviews.router, prefix="/reviews", tags=["reviews"], dependencies=protected_dependencies)
 app.include_router(trading.router, tags=["trading"], dependencies=protected_dependencies)
+app.include_router(automation.router, tags=["automation"], dependencies=protected_dependencies)
 
 
 @app.get("/health")

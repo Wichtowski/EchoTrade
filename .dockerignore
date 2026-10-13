@@ -14,3 +14,9 @@ dist
 build
 coverage
 htmlcov
+.env
+.env.*
+**/.env
+**/.env.*
+app/dash/.wrangler
+app/lens/artifacts
