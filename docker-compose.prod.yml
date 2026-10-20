@@ -1,5 +1,9 @@
+# Fixed project name, so containers, volumes and networks are echotrade_* whatever the deploy directory is called
+name: echotrade
+
 services:
   echo-postgres:
+    container_name: echotrade-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -23,9 +27,9 @@ services:
         max-file: "3"
 
   echo-core:
-    build:
-      context: .
-      dockerfile: app/core/Dockerfile
+    container_name: echotrade-core
+    # Built and pushed by the deploy workflow; ECHO_APP_VERSION is the release tag
+    image: ghcr.io/wichtowski/echotrade-core:${ECHO_APP_VERSION:?Set ECHO_APP_VERSION to the release tag}
     restart: unless-stopped
     env_file:
       - .env
@@ -60,6 +64,7 @@ services:
         max-file: "3"
 
   echo-mail:
+    container_name: echotrade-mail
     profiles: [mail]
     image: ghcr.io/docker-mailserver/docker-mailserver:latest
     hostname: ${ECHO_MAIL_HOSTNAME:-mail}
@@ -91,10 +96,6 @@ services:
 
 volumes:
   pgdata:
-  n8n_data:
-  rabbitmq_data:
-  redis_data:
-  mongo_data:
   mail_data:
   mail_state:
   mail_logs:
