@@ -1,26 +1,18 @@
-"""Redis-backed async status tracking for held quote refresh jobs."""
+"""PostgreSQL-backed status tracking for held quote refresh jobs."""
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
+from uuid import UUID
 
-from redis.asyncio import Redis
-from redis.exceptions import RedisError
-
-from libshared.config import settings
+from libdb.models import AutomationRun
+from libdb.session import async_session
 from libshared.schemas import MarketQuoteRefreshTaskOut
-
-QUOTE_REFRESH_STATUS_KEY = "market_quote_refresh:held"
-QUOTE_REFRESH_STATUS_TTL_SECONDS = 60 * 60 * 24
+from sqlalchemy import select
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
-
-
-async def _redis() -> Redis:
-    return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 def build_quote_refresh_payload(
@@ -45,28 +37,25 @@ def build_quote_refresh_payload(
     }
 
 
-async def get_quote_refresh_status() -> MarketQuoteRefreshTaskOut | None:
-    client = await _redis()
-    try:
-        raw = await client.get(QUOTE_REFRESH_STATUS_KEY)
-    except RedisError:
-        return None
-    finally:
-        await client.aclose()
-    if raw is None:
-        return None
-    return MarketQuoteRefreshTaskOut.model_validate(json.loads(raw))
-
-
-async def set_quote_refresh_status(payload: dict[str, object]) -> MarketQuoteRefreshTaskOut:
-    client = await _redis()
-    serialized = json.dumps(payload)
-    try:
-        await client.set(QUOTE_REFRESH_STATUS_KEY, serialized, ex=QUOTE_REFRESH_STATUS_TTL_SECONDS)
-    except RedisError as exc:
-        raise RuntimeError(
-            "Redis is not available. Start Redis before queueing held quote refresh jobs."
-        ) from exc
-    finally:
-        await client.aclose()
-    return MarketQuoteRefreshTaskOut.model_validate(payload)
+async def get_quote_refresh_status(user_id: UUID) -> MarketQuoteRefreshTaskOut | None:
+    async with async_session() as session:
+        job = await session.scalar(
+            select(AutomationRun)
+            .where(AutomationRun.kind == "quotes", AutomationRun.user_id == user_id)
+            .order_by(AutomationRun.created_at.desc())
+            .limit(1)
+        )
+        if job is None:
+            return None
+        payload = dict(
+            job.payload
+            or build_quote_refresh_payload(
+                task_id=str(job.id),
+                provider="yahoo",
+                requested_symbols=(job.request or {}).get("symbols", []),
+                status=job.status,
+            )
+        )
+        payload["status"] = job.status
+        payload["error"] = job.error
+        return MarketQuoteRefreshTaskOut.model_validate(payload)

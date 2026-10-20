@@ -1,19 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.services.browser_capture import (
-    extract_latest_capture_close,
-    get_latest_capture_document,
-)
-from core.services.portfolio import build_snapshot_payload, latest_quote_map
 from libdb.models import (
     InvestmentPlan,
     InvestmentPlanTarget,
@@ -33,6 +24,15 @@ from libshared.schemas import (
     WeeklyReviewPositionInsight,
     WeeklyReviewRunRequest,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.services.browser_capture import (
+    extract_latest_capture_close,
+    get_latest_capture_document,
+)
+from core.services.paper import quote_is_fresh, utc
+from core.services.portfolio import build_snapshot_payload, latest_quote_map
 
 
 def _as_float(value: Decimal | float | int | None) -> float:
@@ -87,7 +87,7 @@ def summarize_weekly_review(
         {
             trade.ticker
             for trade in recent_trades
-            if trade.review_date is not None and trade.review_date <= period_end
+            if trade.review_date is not None and utc(trade.review_date) <= utc(period_end)
         }
     )
 
@@ -190,7 +190,7 @@ def rank_opportunity_candidates(
         chart_document = chart_payloads.get(ticker)
         has_chart = chart_document is not None
         latest_price = None
-        has_fresh_quote = quote is not None
+        has_fresh_quote = quote is not None and bool(quote.get("fresh", False))
         if quote is not None:
             latest_price = quote["price"]
         elif chart_document is not None:
@@ -271,6 +271,7 @@ async def create_weekly_review(
     data: WeeklyReviewRunRequest,
     *,
     user_id: UUID,
+    commit: bool = True,
 ) -> WeeklyReview:
     now = datetime.now(UTC)
     period_end = now
@@ -300,13 +301,13 @@ async def create_weekly_review(
             PortfolioSnapshot.account_type == data.account_type.value,
             PortfolioSnapshot.user_id == user_id,
             PortfolioSnapshot.currency == risk.currency,
-            PortfolioSnapshot.created_at < period_start,
+            PortfolioSnapshot.created_at < period_start.replace(tzinfo=None),
         )
         .order_by(PortfolioSnapshot.created_at.desc())
         .limit(1)
     )
     previous_snapshot = previous_snapshot_result.scalar_one_or_none()
-    recent_trades = [trade for trade in trades if period_start <= trade.executed_at <= period_end]
+    recent_trades = [trade for trade in trades if period_start <= utc(trade.executed_at) <= period_end]
 
     details = summarize_weekly_review(
         positions_payload=positions_payload,
@@ -322,8 +323,8 @@ async def create_weekly_review(
     review = WeeklyReview(
         user_id=user_id,
         account_type=data.account_type.value,
-        period_start=period_start,
-        period_end=period_end,
+        period_start=period_start.replace(tzinfo=None),
+        period_end=period_end.replace(tzinfo=None),
         reporting_currency=risk.currency,
         total_value=details["total_value"],
         total_value_change=details["total_value_change"],
@@ -341,7 +342,10 @@ async def create_weekly_review(
         warnings=details["warnings"],
     )
     session.add(review)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     await session.refresh(review)
     return review
 
@@ -377,6 +381,7 @@ async def create_opportunity_scan(
     data: OpportunityScanRunRequest,
     *,
     user_id: UUID,
+    commit: bool = True,
 ) -> OpportunityScan:
     if data.plan_id is not None:
         plan = await session.get(InvestmentPlan, data.plan_id)
@@ -430,13 +435,14 @@ async def create_opportunity_scan(
             "price": _as_float(quote.price),
             "currency": quote.currency,
             "source": quote.source,
+            "fresh": quote_is_fresh(quote, datetime.now(UTC)),
         }
         for symbol, quote in latest_quotes.items()
     }
     due_review_tickers = {
         trade.ticker
         for trade in trades
-        if trade.review_date is not None and trade.review_date <= datetime.now(UTC)
+        if trade.review_date is not None and utc(trade.review_date) <= datetime.now(UTC)
     }
 
     chart_payloads: dict[str, dict[str, Any] | None] = {}
@@ -475,7 +481,10 @@ async def create_opportunity_scan(
         warnings=warnings,
     )
     session.add(scan)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     await session.refresh(scan)
     return scan
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from libshared.constants import WHITELIST
+from libshared.constants import ALLOWED_EXPERIMENTAL_HORIZONS, WHITELIST
 from libshared.schemas import RiskCheckResult, RiskLevel, TradeProposalCreate
 
 EVALUATOR_SYSTEM_PROMPT = """\
@@ -46,6 +46,10 @@ def evaluate_hard_rules(
     # Rule 8: instrument whitelist
     if proposal.ticker not in WHITELIST:
         failed.append("instrument_whitelist")
+    if proposal.time_horizon.value not in ALLOWED_EXPERIMENTAL_HORIZONS:
+        failed.append("holding_period")
+    if not proposal.sources:
+        failed.append("missing_sources")
 
     # Rule 9: max single trade
     from libshared.config import settings

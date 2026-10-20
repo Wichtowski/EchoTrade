@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -19,13 +20,13 @@ from core.services.browser_capture import (
     get_capture_statuses,
     get_latest_capture_document,
     list_saved_queries,
-    set_capture_status,
 )
 from core.services.market_data import (
     build_weekly_checkpoint_bar,
     build_market_quote,
     fetch_frankfurter_rate,
     fetch_yahoo_quotes,
+    fetch_yahoo_quote,
     fetch_yahoo_weekly_bars,
     resolve_history_start,
     upsert_history_bars,
@@ -33,7 +34,6 @@ from core.services.market_data import (
 from core.services.quote_refresh import (
     build_quote_refresh_payload,
     get_quote_refresh_status,
-    set_quote_refresh_status,
 )
 from libdb.models import MarketHistoryBar, MarketQuote, Position
 from libdb.session import get_session
@@ -50,14 +50,12 @@ from libshared.schemas import (
     SavedQueryKind,
     SavedQueryOut,
 )
-from libworker.tasks.market import capture_cnbc_chart, refresh_held_yahoo_quotes
+from core.services.jobs import enqueue
+from core.routers.trading_dependencies import OwnerIdDependency
 
 router = APIRouter()
 
 
-PROVIDER_TASKS = {
-    BrowserCaptureProvider.CNBC: capture_cnbc_chart,
-}
 
 
 @router.get("/prices")
@@ -116,34 +114,21 @@ async def refresh_held_quotes(
 
 @router.post("/quotes/refresh-held/queue", response_model=MarketQuoteRefreshTaskOut, status_code=202)
 async def queue_refresh_held_quotes(
+    user_id: OwnerIdDependency,
     session: AsyncSession = Depends(get_session),
-    user_id=Depends(request_user_id_dependency),
 ) -> MarketQuoteRefreshTaskOut:
     position_result = await session.execute(select(Position.ticker).where(Position.user_id == user_id))
     symbols = sorted({ticker.strip().upper() for ticker in position_result.scalars().all() if ticker})
     if not symbols:
         raise HTTPException(status_code=409, detail="No held positions found to refresh.")
 
-    existing = await get_quote_refresh_status()
-    if existing is not None and existing.status in {"queued", "running"}:
-        raise HTTPException(status_code=409, detail="Held quote refresh is already queued or running.")
-
-    task = refresh_held_yahoo_quotes.delay(symbols)
-    payload = build_quote_refresh_payload(
-        task_id=task.id,
-        provider="yahoo",
-        requested_symbols=symbols,
-        status="queued",
-    )
-    try:
-        return await set_quote_refresh_status(payload)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    job = await enqueue(session, "quotes", user_id, request={"symbols": symbols})
+    return MarketQuoteRefreshTaskOut.model_validate(build_quote_refresh_payload(task_id=str(job.id), provider="yahoo", requested_symbols=symbols, status="queued"))
 
 
 @router.get("/quotes/refresh-held/status", response_model=MarketQuoteRefreshTaskOut | None)
-async def get_refresh_held_quotes_status() -> MarketQuoteRefreshTaskOut | None:
-    return await get_quote_refresh_status()
+async def get_refresh_held_quotes_status(user_id=Depends(request_user_id_dependency)) -> MarketQuoteRefreshTaskOut | None:
+    return await get_quote_refresh_status(user_id)
 
 
 @router.get("/news")
@@ -203,44 +188,27 @@ async def price_history(
 
 @router.post("/browser/capture/{provider}/{ticker}", response_model=BrowserCaptureTaskOut, status_code=202)
 async def enqueue_browser_capture(
+    user_id: OwnerIdDependency,
     provider: BrowserCaptureProvider,
     ticker: str,
+    session: AsyncSession = Depends(get_session),
 ) -> BrowserCaptureTaskOut:
     normalized_symbol = ticker.strip().upper()
-    if not normalized_symbol:
+    if not re.fullmatch(r"[A-Z0-9.^-]{1,20}", normalized_symbol):
         raise HTTPException(status_code=400, detail="Symbol is required")
 
-    task_runner = PROVIDER_TASKS.get(provider)
-    if task_runner is None:
-        raise HTTPException(status_code=404, detail=f"Provider {provider.value} is not supported")
-
-    existing = await get_capture_status(provider, normalized_symbol)
-    if existing is not None and existing.status in {"queued", "running"}:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{provider.value} capture is already {existing.status} for {normalized_symbol}",
-        )
-
-    task = task_runner.delay(normalized_symbol)
-    payload = build_capture_payload(
-        task_id=task.id,
-        provider=provider,
-        symbol=normalized_symbol,
-        status="queued",
-    )
-    try:
-        return await set_capture_status(provider, normalized_symbol, payload)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    job = await enqueue(session, "capture", user_id, f"{provider.value}:{normalized_symbol}:{datetime.now().timestamp()}", {"symbol": normalized_symbol})
+    return BrowserCaptureTaskOut.model_validate(build_capture_payload(task_id=str(job.id), provider=provider, symbol=normalized_symbol, status="queued"))
 
 
 @router.get("/browser/capture/{provider}/status")
 async def get_browser_capture_statuses(
     provider: BrowserCaptureProvider,
     symbols: str = "",
+    user_id=Depends(request_user_id_dependency),
 ) -> dict[str, object]:
     requested_symbols = [symbol.strip().upper() for symbol in symbols.split(",") if symbol.strip()]
-    statuses = await get_capture_statuses(provider, requested_symbols)
+    statuses = await get_capture_statuses(provider, requested_symbols, user_id)
     return {
         "statuses": {
             symbol: status.model_dump() if status is not None else None for symbol, status in statuses.items()

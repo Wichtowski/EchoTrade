@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, Text, func
+from sqlalchemy import Boolean, ForeignKey, Index, Numeric, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -279,6 +279,7 @@ class TradingBudget(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     account_type: Mapped[str] = mapped_column(Text, nullable=False, default="experimental")
+    paper_account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("paper_accounts.user_id"), nullable=True)
     month: Mapped[str] = mapped_column(Text, nullable=False)
     starting_budget: Mapped[float] = mapped_column(Numeric, nullable=False)
     used_budget: Mapped[float] = mapped_column(Numeric, default=0)
@@ -328,6 +329,7 @@ class TradeProposal(Base):
     risks: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     invalidated_if: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_holding_period: Mapped[str | None] = mapped_column(Text, nullable=True)
+    time_horizon: Mapped[str] = mapped_column(Text, default="medium_term")
     review_date: Mapped[datetime | None] = mapped_column(nullable=True)
     confidence: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     used_browser_context: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -357,12 +359,20 @@ class RiskCheck(Base):
 
 class ExecutedTrade(Base):
     __tablename__ = "executed_trades"
+    __table_args__ = (
+        Index("paper_fill_proposal_unique", "proposal_id", unique=True, postgresql_where=text("paper_account_id IS NOT NULL")),
+        Index("paper_fill_sequence_unique", "paper_account_id", "paper_sequence", unique=True, postgresql_where=text("paper_account_id IS NOT NULL")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     proposal_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trade_proposals.id"), nullable=False
     )
+    paper_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("paper_accounts.user_id"), nullable=True
+    )
+    paper_sequence: Mapped[int | None] = mapped_column(nullable=True)
     broker_order_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     ticker: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
@@ -402,3 +412,79 @@ class RiskRule(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
+class AISettings(Base):
+    __tablename__ = "ai_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    commentary_model: Mapped[str] = mapped_column(Text, default="gpt-6-luna")
+    proposal_model: Mapped[str] = mapped_column(Text, default="gpt-6-luna")
+    reasoning_effort: Mapped[str] = mapped_column(Text, default="low")
+    automation_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    proposals_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
+class PaperAccount(Base):
+    __tablename__ = "paper_accounts"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    currency: Mapped[str] = mapped_column(Text, default="USD")
+    initial_cash: Mapped[float] = mapped_column(Numeric, nullable=False)
+    cash: Mapped[float] = mapped_column(Numeric, nullable=False)
+    status: Mapped[str] = mapped_column(Text, default="paused")
+    daily_period: Mapped[str] = mapped_column(Text, default="")
+    daily_start_equity: Mapped[float] = mapped_column(Numeric, nullable=False)
+    monthly_period: Mapped[str] = mapped_column(Text, default="")
+    monthly_start_equity: Mapped[float] = mapped_column(Numeric, nullable=False)
+    last_loss_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "period", name="automation_run_period_unique"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    period: Mapped[str] = mapped_column(Text, nullable=False)
+    request: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(Text, default="running")
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notification_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts: Mapped[int] = mapped_column(default=0)
+    available_at: Mapped[datetime] = mapped_column(default=func.now())
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
+class BrowserDocument(Base):
+    __tablename__ = "browser_documents"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    symbol: Mapped[str] = mapped_column(Text, nullable=False)
+    document: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(default=func.now())
+
+
+class SavedQuery(Base):
+    __tablename__ = "saved_queries"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
+class DataMigration(Base):
+    __tablename__ = "data_migrations"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(default=func.now())

@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter
 from libshared.schemas import PaperTradingStatusOut, RiskCheckOut, RiskEvaluateRequest
 
-from core.routers.trading_dependencies import SessionDependency, UserIdDependency
+from core.routers.trading_dependencies import OwnerIdDependency, SessionDependency, UserIdDependency
 from core.services.trading import (
     build_trader_status,
     evaluate_trade_proposal,
@@ -36,7 +36,7 @@ async def risk_rules(
 async def risk_evaluate(
     data: RiskEvaluateRequest,
     session: SessionDependency,
-    user_id: UserIdDependency,
+    user_id: OwnerIdDependency,
 ) -> RiskCheckOut:
     risk_check = await evaluate_trade_proposal(session, data.proposal_id, user_id=user_id)
     return serialize_risk_check(risk_check)

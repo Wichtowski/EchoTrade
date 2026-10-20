@@ -11,7 +11,7 @@ from libshared.schemas import (
 )
 from sqlalchemy import select
 
-from core.routers.trading_dependencies import SessionDependency, UserIdDependency
+from core.routers.trading_dependencies import OwnerIdDependency, SessionDependency, UserIdDependency
 from core.services.trading import (
     approve_trade_proposal,
     create_trade_proposal,
@@ -40,7 +40,7 @@ async def list_trade_proposals(
 async def post_trade_proposal(
     data: TradeProposalCreate,
     session: SessionDependency,
-    user_id: UserIdDependency,
+    user_id: OwnerIdDependency,
 ) -> TradeProposalOut:
     proposal = await create_trade_proposal(session, data, user_id=user_id)
     return serialize_trade_proposal(proposal)
@@ -50,7 +50,7 @@ async def post_trade_proposal(
 async def approve_proposal(
     proposal_id: UUID,
     session: SessionDependency,
-    user_id: UserIdDependency,
+    user_id: OwnerIdDependency,
 ) -> TradeProposalOut:
     proposal = await approve_trade_proposal(session, proposal_id, user_id=user_id)
     return serialize_trade_proposal(proposal)
@@ -61,7 +61,9 @@ async def reject_proposal(
     proposal_id: UUID,
     data: TradeProposalDecisionRequest,
     session: SessionDependency,
-    user_id: UserIdDependency,
+    user_id: OwnerIdDependency,
 ) -> TradeProposalOut:
-    proposal = await reject_trade_proposal(session, proposal_id, user_id=user_id, reason=data.reason)
+    proposal = await reject_trade_proposal(
+        session, proposal_id, user_id=user_id, reason=data.reason
+    )
     return serialize_trade_proposal(proposal)

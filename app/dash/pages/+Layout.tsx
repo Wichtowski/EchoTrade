@@ -45,6 +45,8 @@ function AppShell({ children }: { children: ReactNode }) {
           <a className="nav-link" href="/reviews">
             Reviews & Scans
           </a>
+          <a className="nav-link" href="/paper">Paper trading</a>
+          <a className="nav-link" href="/settings">AI & Automation</a>
           {user?.role === "owner" ? (
             <a className="nav-link" href="/access">
               Access
